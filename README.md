@@ -4,7 +4,7 @@ Wox 目录插件（非 single-file）：快速查询并复制 TOTP 验证码（G
 
 ## 功能
 
-- `totp` / `otp` 触发，列出所有账户及当前验证码，回车复制
+- `totp` 触发，列出所有账户及当前验证码，回车复制
 - 列表显示 `issuer · 账户名`，支持 SHA1/SHA256/SHA512、自定义 digits/period
 - 剩余时间显示，支持复制下一周期验证码
 - 关键字过滤账户（匹配账户名和 issuer）
@@ -15,10 +15,10 @@ Wox 目录插件（非 single-file）：快速查询并复制 TOTP 验证码（G
 ```
 totp                        列出账户及验证码
 totp <关键字>               过滤账户
-totp add <账户> <base32secret>    添加条目
-totp add <otpauth://totp/...>     通过 otpauth 链接添加（自动解析 issuer/账户名）
-totp del <账户>             删除条目
+totp add <otpauth://totp/...>     通过 otpauth 链接添加（自动解析 issuer/账户名，同 issuer+name 覆盖）
 ```
+
+删除不走子命令：列表结果的操作面板里有「删除此账户」。
 
 ## 安装
 
@@ -28,13 +28,11 @@ totp del <账户>             删除条目
 wpm dev.add /Users/wuweixing/lab/sqlwwx/wox-totp
 ```
 
-Wox 解析根目录 `plugin.json` 并加载 `dist/index.js`（Entry 字段指定）。
+`wpm dev.add` 注册根目录后，Wox 加载根目录 `plugin.json`；构建时会把 `plugin.json` 拷入 `dist/`（官方模板结构），热重载读 `dist/plugin.json`。
 
 ## 存储
 
-明文 JSON：`~/.wox/cache/plugins/<plugin-id>/totp-accounts.json`
-
-每条目存完整 otpauth URI + 解析字段：
+存储在 Wox 插件缓存目录（init 时通过 `api.GetCacheFolder` 获取），文件为 `totp-accounts.json`，顶层是 `{ "accounts": [...] }`，每条目存完整 otpauth URI + 解析字段：
 
 ```json
 { "name": "me@x.com", "issuer": "GitHub", "secret": "...", "digits": 6, "period": 30, "algo": "SHA1", "uri": "otpauth://totp/..." }

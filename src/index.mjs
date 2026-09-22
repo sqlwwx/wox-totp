@@ -2,6 +2,75 @@
 import { totp, parseUri, remainingSeconds, base32Decode } from "./totp.mjs"
 import { setCacheDir, readAccounts, updateAccounts } from "./store.mjs"
 
+// ---------- i18n ----------
+// 界面语言经 plugin.json 的 I18n 字典 + GetTranslation 提供；语言探测键 language_probe
+// 返回 "en"/"zh"，用于初始化兜底字典（GetTranslation 不可用时 fallback 到 zh）
+let t = (_key, ...args) => ""
+async function initI18n(ctx) {
+  let probe = "zh"
+  try {
+    probe = (await api.GetTranslation(ctx, "language_probe")).trim() || "zh"
+  } catch {}
+  const dicts = {
+    en: {
+      hint_no_op: "Enter does nothing, keep typing parameters",
+      err_invalid_uri: (m) => `Invalid otpauth URI: ${m}`,
+      err_uri_example: "Example: otpauth://totp/GitHub:me?secret=XXXX",
+      err_invalid_secret: (m) => `Invalid secret: ${m}`,
+      err_secret_hint: "Expected base32 (A-Z2-7, as provided by Google Authenticator)",
+      added: (d) => `Added ${d}`,
+      view_codes: "Type totp to view codes",
+      empty_title: "No accounts yet",
+      empty_subtitle: "Press enter to fill in totp add, then paste an otpauth URI",
+      action_add: "Add account",
+      no_match: "No matching accounts",
+      no_match_detail: (n, kw) => `${n} accounts total, keyword "${kw}"`,
+      remain_copy: (s) => `${s}s left · enter to copy`,
+      copy_code: (c) => `Copy ${c}`,
+      copy_next: "Copy next period code",
+      delete_account: "Delete this account",
+      copied: (d) => `Copied code for ${d}`,
+      copied_next: (c) => `Copied ${c}`,
+      deleted: (d) => `Deleted ${d}`,
+      err_prefix: (m) => `Error: ${m}`,
+      check_log: "See log ~/.wox/log/wox.log",
+      build_row_detail: (n) => `${n} accounts total`,
+    },
+    zh: {
+      hint_no_op: "回车无操作，继续输入参数",
+      err_invalid_uri: (m) => `otpauth 链接无效: ${m}`,
+      err_uri_example: "示例: otpauth://totp/GitHub:me?secret=XXXX",
+      err_invalid_secret: (m) => `secret 无效: ${m}`,
+      err_secret_hint: "应为 base32（A-Z2-7，Google Authenticator 提供的格式）",
+      added: (d) => `已添加 ${d}`,
+      view_codes: "输入 totp 查看验证码",
+      empty_title: "还没有账户",
+      empty_subtitle: "回车填入 totp add，再粘贴 otpauth 链接",
+      action_add: "添加账户",
+      no_match: "没有匹配的账户",
+      no_match_detail: (n, kw) => `共 ${n} 个账户，关键字「${kw}」`,
+      remain_copy: (s) => `剩余 ${s}s · 回车复制`,
+      copy_code: (c) => `复制 ${c}`,
+      copy_next: "复制下一周期验证码",
+      delete_account: "删除此账户",
+      copied: (d) => `已复制 ${d} 的验证码`,
+      copied_next: (c) => `已复制 ${c}`,
+      deleted: (d) => `已删除 ${d}`,
+      err_prefix: (m) => `出错: ${m}`,
+      check_log: "查看日志 ~/.wox/log/wox.log",
+      build_row_detail: (n) => `共 ${n} 个账户`,
+    },
+  }
+  const dict = dicts[probe] || dicts.zh
+  // t(key, ...args)：优先 Wox 翻译（静态文案），带参文案用本地字典函数
+  t = (key, ...args) => {
+    const local = dict[key]
+    if (typeof local === "function") return local(...args)
+    if (local !== undefined) return local
+    return key
+  }
+}
+
 // 动作图标（Action Panel 需单色 svg，跟随主题变量）
 const ICON_COPY = {
   ImageType: "svg",
@@ -68,7 +137,7 @@ const SUBCMDS = [
 
 function subcmdHints(cmd) {
   return SUBCMDS.filter((s) => !cmd || s.cmd.startsWith(cmd.toLowerCase())).map((s) =>
-    result(s.hint, "回车无操作，继续输入参数", [])
+    result(s.hint, t("hint_no_op"), [])
   )
 }
 
@@ -78,13 +147,13 @@ async function qAdd(parts) {
   try {
     entry = parseUri(parts[1])
   } catch (e) {
-    return single(`otpauth 链接无效: ${e.message}`, "示例: otpauth://totp/GitHub:me?secret=XXXX", [])
+    return single(t("err_invalid_uri", e.message), t("err_uri_example"), [])
   }
   // 先验证 secret 合法，避免存进坏数据
   try {
     totp(entry.secret, 0, entry.period, entry.digits, entry.algo)
   } catch (e) {
-    return single(`secret 无效: ${e.message}`, "应为 base32（A-Z2-7，Google Authenticator 提供的格式）", [])
+    return single(t("err_invalid_secret", e.message), t("err_secret_hint"), [])
   }
   updateAccounts((accounts) => {
     // 同一 issuer+name 视为同一条目（覆盖），否则可能账号同名
@@ -92,14 +161,14 @@ async function qAdd(parts) {
     if (i >= 0) accounts[i] = entry
     else accounts.push(entry)
   })
-  return single(`已添加 ${display(entry)}`, "输入 totp 查看验证码", [])
+  return single(t("added", display(entry)), t("view_codes"), [])
 }
 
 async function qList(search) {
   const accounts = readAccounts()
   if (accounts.length === 0) {
-    return single("还没有账户", "回车填入 totp add，再粘贴 otpauth 链接", [
-      act("添加账户", ICON_EXEC, async (actCtx) => {
+    return single(t("empty_title"), t("empty_subtitle"), [
+      act(t("action_add"), ICON_EXEC, async (actCtx) => {
         await api.ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp add " })
       }, { isDefault: true }),
     ])
@@ -108,7 +177,7 @@ async function qList(search) {
   const kw = search.toLowerCase()
   const matched = accounts.filter((a) => !kw || a.name.toLowerCase().includes(kw) || (a.issuer || "").toLowerCase().includes(kw))
   if (matched.length === 0) {
-    return single("没有匹配的账户", `共 ${accounts.length} 个账户，关键字「${search}」`, [])
+    return single(t("no_match"), t("no_match_detail", accounts.length, search), [])
   }
 
   const results = matched.map((a) => {
@@ -116,24 +185,24 @@ async function qList(search) {
     try {
       code = totp(a.secret, 0, a.period, a.digits, a.algo)
     } catch (e) {
-      return result(a.name, `secret 无效: ${e.message}`, [])
+      return result(a.name, t("err_invalid_secret", e.message), [])
     }
     const remain = remainingSeconds(a.period)
-    return result(`${display(a)}  ${code}`, `剩余 ${remain}s · 回车复制`, [
-      act(`复制 ${code}`, ICON_COPY, async (actCtx) => {
+    return result(`${display(a)}  ${code}`, t("remain_copy", remain), [
+      act(t("copy_code", code), ICON_COPY, async (actCtx) => {
         await api.Copy(actCtx, { type: "text", text: code })
-        await api.Notify(actCtx, `已复制 ${display(a)} 的验证码`)
+        await api.Notify(actCtx, t("copied", display(a)))
       }, { isDefault: true }),
-      act("复制下一周期验证码", ICON_EXEC, async (actCtx) => {
+      act(t("copy_next"), ICON_EXEC, async (actCtx) => {
         const next = totp(a.secret, 1, a.period, a.digits, a.algo)
         await api.Copy(actCtx, { type: "text", text: next })
-        await api.Notify(actCtx, `已复制 ${next}`)
+        await api.Notify(actCtx, t("copied_next", next))
       }),
-      act("删除此账户", ICON_DEL, async (actCtx) => {
+      act(t("delete_account"), ICON_DEL, async (actCtx) => {
         updateAccounts((accounts) => {
           accounts.splice(accounts.findIndex((x) => x.name === a.name && (x.issuer || "") === (a.issuer || "")), 1)
         })
-        await api.Notify(actCtx, `已删除 ${display(a)}`)
+        await api.Notify(actCtx, t("deleted", display(a)))
         await api.RefreshQuery(actCtx, { PreserveSelectedIndex: true })
       }),
     ], [{ Type: "text", Text: `${remain}s` }])
@@ -146,6 +215,7 @@ async function qList(search) {
 export const plugin = {
   async init(ctx, params) {
     api = params.API
+    await initI18n(ctx)
     let dir = ""
     try {
       dir = await api.GetCacheFolder(ctx)
@@ -171,11 +241,11 @@ export const plugin = {
       const list = await qList(search)
       // 空输入时在列表末尾追加 build 时间行，用于确认热重载后的版本
       // build 时间行仅开发构建（--watch 注入 __BUILD_TIME__）时显示
-      const buildRow = !cmd && __BUILD_TIME__ ? [result(`build ${__BUILD_TIME__}`, `共 ${accounts.length} 个账户`, [])] : []
+      const buildRow = !cmd && __BUILD_TIME__ ? [result(`build ${__BUILD_TIME__}`, t("build_row_detail", accounts.length), [])] : []
       return { Results: [...hints, ...list.Results, ...buildRow] }
     } catch (e) {
       api.Log(ctx, "Error", `query 失败: ${e.stack || e.message}`)
-      return single(`出错: ${e.message}`, "查看日志 ~/.wox/log/wox.log", [])
+      return single(t("err_prefix", e.message), t("check_log"), [])
     }
   },
 }
