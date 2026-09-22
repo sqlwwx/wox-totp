@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "wox-totp",
+      "devDependencies": {
+        "@wox-launcher/wox-plugin": "*",
+      },
+    },
+  },
+  "packages": {
+    "@wox-launcher/wox-plugin": ["@wox-launcher/wox-plugin@0.0.138", "https://packages.aliyun.com/5fb61b7b9936d4e364614ee3/npm/npm-registry/@wox-launcher/wox-plugin/-/wox-plugin-0.0.138.tgz", {}, "sha512-twwBlU7/MngIX7FFNOk3Dznkz5wKx3HXlPEgyyA8BMDr5xRRTuMpTJHxCGVVrmvFvjkKv+TNi8J9wbJ2RS2swA=="],
+  }
+}

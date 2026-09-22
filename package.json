@@ -1,0 +1,7 @@
+{
+  "name": "wox-totp",
+  "private": true,
+  "devDependencies": {
+    "@wox-launcher/wox-plugin": "*"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "Id": "ef529aa0-1288-4a8c-b061-b98389491b4e",
+  "Name": "TOTP Codes",
+  "Author": "wuweixing",
+  "Version": "1.2.0",
+  "MinWoxVersion": "2.4.2",
+  "Runtime": "nodejs",
+  "Description": "TOTP 验证码查询/复制，本地存储，支持 otpauth:// 添加",
+  "Icon": "emoji:🔐",
+  "TriggerKeywords": ["totp"],
+  "Entry": "index.js",
+  "SupportedOS": ["windows", "linux", "darwin"]
+}
