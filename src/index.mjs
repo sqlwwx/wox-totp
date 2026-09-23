@@ -40,6 +40,10 @@ async function initI18n(ctx) {
       confirm_yes: "Yes, delete this account",
       confirm_cancel: "Cancel",
       confirm_gone: "Account not found (maybe already deleted)",
+      set_alias: "Set alias",
+      alias_label: "Alias (empty to clear)",
+      alias_saved: (a2) => `Alias saved: ${a2}`,
+      alias_cleared: "Alias cleared",
     },
     zh: {
       hint_no_op: "回车无操作，继续输入参数",
@@ -69,6 +73,10 @@ async function initI18n(ctx) {
       confirm_yes: "确认删除此账户",
       confirm_cancel: "取消",
       confirm_gone: "账户不存在（可能已删除）",
+      set_alias: "设置别名",
+      alias_label: "别名（留空清除）",
+      alias_saved: (a2) => `别名已保存: ${a2}`,
+      alias_cleared: "别名已清除",
     },
   }
   const dict = dicts[probe] || dicts.zh
@@ -141,7 +149,12 @@ function act(name, icon, fn, opts) {
 }
 
 function display(a) {
-  return `${a.issuer ? a.issuer + " · " : ""}${a.name}`
+  // 有别名时显示别名，原名退到副标题位置
+  return a.alias || `${a.issuer ? a.issuer + " · " : ""}${a.name}`
+}
+
+function detail(a) {
+  return a.alias ? `${a.issuer ? a.issuer + " · " : ""}${a.name}` : ""
 }
 
 // confirm 子命令用的账户键。base64url 编码 issuer/name，避免与空格/冒号混淆
@@ -246,9 +259,10 @@ async function qList(search) {
     }
     const remain = remainingSeconds(a.period)
     lastRendered.set(rowId(a), { code, remain })
+    const sub = [detail(a), t("remain_copy", remain)].filter(Boolean).join(" · ")
     return {
       Id: rowId(a),
-      ...result(`${display(a)}  ${code}`, t("remain_copy", remain), buildActions(a, code), [{ Type: "text", Text: `${remain}s` }]),
+      ...result(`${display(a)}  ${code}`, sub, buildActions(a, code), [{ Type: "text", Text: `${remain}s` }]),
     }
   })
   return { Results: results }
@@ -303,7 +317,7 @@ async function tickLive() {
     const update = {
       Id: rowId(a),
       Title: `${display(a)}  ${code}`,
-      SubTitle: t("remain_copy", remain),
+      SubTitle: [detail(a), t("remain_copy", remain)].filter(Boolean).join(" · "),
       Tails: [{ Type: "text", Text: `${remain}s` }],
     }
     if (!prev || prev.code !== code) {
@@ -329,6 +343,35 @@ function buildActions(a, code) {
       await api.Copy(actCtx, { type: "text", text: next })
       await api.Notify(actCtx, t("copied_next", next))
     }),
+    {
+      // 别名用表单收集：文本框 + 提交保存；留空提交即清除别名
+      Name: t("set_alias"),
+      Icon: ICON_EXEC,
+      PreventHideAfterAction: true,
+      Form: [
+        {
+          Type: "textbox",
+          Value: {
+            Key: "alias",
+            Label: t("alias_label"),
+            DefaultValue: a.alias || "",
+            MaxLines: 1,
+          },
+        },
+      ],
+      OnSubmit: async (formCtx, actionContext) => {
+        const alias = (actionContext.Values.alias || "").trim()
+        updateAccounts((accs) => {
+          const j = accs.findIndex((x) => x.name === a.name && (x.issuer || "") === (a.issuer || ""))
+          if (j >= 0) {
+            if (alias) accs[j].alias = alias
+            else delete accs[j].alias
+          }
+        })
+        await api.Notify(formCtx, alias ? t("alias_saved", alias) : t("alias_cleared"))
+        await api.RefreshQuery(formCtx, { PreserveSelectedIndex: true })
+      },
+    },
     act(t("delete_account"), ICON_DEL, async (actCtx) => {
       // 二次确认：跳到 confirm 子命令，回车确认行才真删
       await api.ChangeQuery(actCtx, {

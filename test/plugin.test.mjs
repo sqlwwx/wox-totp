@@ -175,6 +175,42 @@ describe("delete confirm flow", () => {
   })
 })
 
+// ---------- 别名 ----------
+describe("alias", () => {
+  test("别名显示与搜索（原文 + 拼音首字母）", async () => {
+    await query(`add ${URI()}`)
+    // 通过表单 action 设置别名
+    const list = await query("")
+    const row = list.Results.find((r) => r.Id?.startsWith("totp:"))
+    const aliasAction = row.Actions.find((a2) => a2.Form)
+    expect(aliasAction).toBeDefined()
+    await aliasAction.OnSubmit(ctx, { Values: { alias: "工作主号" } })
+    expect(api.notifies.some((n) => n.includes("工作主号"))).toBe(true)
+
+    // 列表 Title 显示别名，SubTitle 显示原名
+    const after = await query("")
+    const aliasedRow = after.Results.find((r) => r.Id?.startsWith("totp:"))
+    expect(aliasedRow.Title).toMatch(/^工作主号\s+\d{6}$/)
+    expect(aliasedRow.SubTitle).toContain("GitHub · me@x.com")
+
+    // 别名原文/首字母/全拼/原名都能搜到
+    for (const kw of ["工作主号", "gzzh", "gongzuozhuhao", "git", "me@x"]) {
+      const hit = await query(kw)
+      expect(hit.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
+    }
+    // 无关关键字不命中
+    const miss = await query("qq")
+    expect(miss.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(false)
+
+    // 清除别名：空值提交
+    await aliasAction.OnSubmit(ctx, { Values: { alias: "" } })
+    const cleared = await query("")
+    const clearedRow = cleared.Results.find((r) => r.Id?.startsWith("totp:"))
+    expect(clearedRow.Title).toMatch(/GitHub · me@x\.com\s+\d{6}/)
+    expect(JSON.parse(fs.readFileSync(path.join(state.cacheDir, "totp-accounts.json"), "utf8")).accounts[0].alias).toBeUndefined()
+  })
+})
+
 // ---------- 复制 ----------
 describe("copy actions", () => {
   test("默认 action 复制当前码", async () => {

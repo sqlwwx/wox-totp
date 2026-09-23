@@ -83,9 +83,23 @@ describe("matchAccount（原文 + 拼音匹配）", () => {
     expect(matchAccount(corp, "aly")).toBe(true)
   })
 
-  test("中文与英文混合匹配", () => {
+  test("中英混合匹配", () => {
     expect(matchAccount(weixin, "微x")).toBe(true)
     expect(matchAccount(weixin, "wx工")).toBe(true)
+  })
+
+  test("别名原文与拼音都参与匹配", () => {
+    const aliased = { name: "me@x.com", issuer: "GitHub", alias: "工作主号" }
+    expect(matchAccount(aliased, "工作主号")).toBe(true) // 别名原文
+    expect(matchAccount(aliased, "gzzh")).toBe(true) // 别名首字母
+    expect(matchAccount(aliased, "gongzuozhuhao")).toBe(true) // 别名全拼
+    expect(matchAccount(aliased, "git")).toBe(true) // 原名仍可搜
+    expect(matchAccount(aliased, "wx")).toBe(false) // 别名没让它多出无关命中
+  })
+
+  test("无别名字段不影响原匹配", () => {
+    expect(matchAccount(github, "git")).toBe(true)
+    expect(matchAccount({ name: "a", issuer: "", alias: "" }, "git")).toBe(false)
   })
 
   test("不命中返回 false", () => {

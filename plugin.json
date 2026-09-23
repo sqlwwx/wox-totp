@@ -2,7 +2,7 @@
   "Id": "ef529aa0-1288-4a8c-b061-b98389491b4e",
   "Name": "i18n:plugin_name",
   "Author": "wuweixing",
-  "Version": "1.5.0",
+  "Version": "1.6.0",
   "MinWoxVersion": "2.4.2",
   "Runtime": "nodejs",
   "Description": "i18n:plugin_description",
@@ -44,7 +44,11 @@
       "confirm_hint": "Press enter to confirm delete, or Esc/cancel",
       "confirm_yes": "Yes, delete this account",
       "confirm_cancel": "Cancel",
-      "confirm_gone": "Account not found (maybe already deleted)"
+      "confirm_gone": "Account not found (maybe already deleted)",
+      "set_alias": "Set alias",
+      "alias_label": "Alias (empty to clear)",
+      "alias_saved": "Alias saved: {0}",
+      "alias_cleared": "Alias cleared"
     },
     "zh_CN": {
       "plugin_name": "TOTP Codes",
@@ -78,7 +82,11 @@
       "confirm_hint": "回车确认删除，Esc 或取消返回",
       "confirm_yes": "确认删除此账户",
       "confirm_cancel": "取消",
-      "confirm_gone": "账户不存在（可能已删除）"
+      "confirm_gone": "账户不存在（可能已删除）",
+      "set_alias": "设置别名",
+      "alias_label": "别名（留空清除）",
+      "alias_saved": "别名已保存: {0}",
+      "alias_cleared": "别名已清除"
     }
   }
 }

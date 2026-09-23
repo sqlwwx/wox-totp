@@ -63,16 +63,16 @@ export function remainingSeconds(period = 30) {
 }
 
 /**
- * 账户匹配：关键字命中 name/issuer 原文（不区分大小写），
+ * 账户匹配：关键字命中 name/issuer/alias 原文（不区分大小写），
  * 或经 pinyin-pro 拼音匹配（支持全拼 weixin / 首字母 wx / 中英混合）。
- * pinyin-pro 异常时退化为纯原文匹配。
+ * 别名和原名都参与拼音匹配。pinyin-pro 异常时退化为纯原文匹配。
  */
 export function matchAccount(a, kw) {
   const k = kw.toLowerCase()
-  if (a.name.toLowerCase().includes(k) || (a.issuer || "").toLowerCase().includes(k)) return true
-  const display = `${a.issuer || ""}${a.name}`
+  const fields = [a.name, a.issuer || "", a.alias || ""]
+  if (fields.some((f) => f.toLowerCase().includes(k))) return true
   try {
-    return match(display, k) !== null
+    return fields.some((f) => f && match(f, k) !== null)
   } catch {
     return false
   }
