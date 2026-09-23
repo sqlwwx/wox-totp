@@ -216,7 +216,9 @@ const lastRendered = new Map()
 let liveTimer = null
 function startLiveTimer() {
   if (liveTimer) return
-  liveTimer = setInterval(tickLive, 1000)
+  liveTimer = setInterval(() => {
+    tickLive().catch((e) => console.error("tickLive:", e.message))
+  }, 1000)
 }
 
 async function tickLive() {
@@ -228,7 +230,14 @@ async function tickLive() {
     return
   }
   if (!visible) return
-  const accounts = readAccounts()
+  let accounts
+  try {
+    accounts = readAccounts()
+  } catch (e) {
+    // 存储损坏时别每秒刷屏，query 时已展示错误
+    api.Log(lastCtx, "Warning", `tickLive readAccounts: ${e.message}`)
+    return
+  }
   for (const a of accounts) {
     let code
     try {
@@ -293,6 +302,14 @@ export const plugin = {
       setCacheDir("")
     }
     api.Log(ctx, "Info", `totp plugin init, cacheDir=${dir}`)
+    // 热重载/卸载时停掉 liveTimer，避免旧模块的 timer 泄漏
+    await api.OnUnload(ctx, async () => {
+      if (liveTimer) {
+        clearInterval(liveTimer)
+        liveTimer = null
+      }
+      lastRendered.clear()
+    })
     startLiveTimer()
   },
 
@@ -312,7 +329,7 @@ export const plugin = {
       const list = await qList(search)
       // 空输入时在列表末尾追加 build 时间行，用于确认热重载后的版本
       // build 时间行仅开发构建（--watch 注入 __BUILD_TIME__）时显示
-      const buildRow = !cmd && __BUILD_TIME__ ? [result(`build ${__BUILD_TIME__}`, t("build_row_detail", accounts.length), [])] : []
+      const buildRow = !cmd && globalThis.__BUILD_TIME__ ? [result(`build ${globalThis.__BUILD_TIME__}`, t("build_row_detail", accounts.length), [])] : []
       return { Results: [...hints, ...list.Results, ...buildRow] }
     } catch (e) {
       api.Log(ctx, "Error", `query 失败: ${e.stack || e.message}`)
