@@ -25,7 +25,7 @@ async function initI18n(ctx) {
       action_add: "Add account",
       no_match: "No matching accounts",
       no_match_detail: (n, kw) => `${n} accounts total, keyword "${kw}"`,
-      remain_copy: (s) => `${s}s left · enter to copy`,
+      remain_copy: (s) => `enter to copy · ${s}s left`,
       copy_code: (c) => `Copy ${c}`,
       copy_next: "Copy next period code",
       delete_account: "Delete this account",
@@ -58,7 +58,7 @@ async function initI18n(ctx) {
       action_add: "添加账户",
       no_match: "没有匹配的账户",
       no_match_detail: (n, kw) => `共 ${n} 个账户，关键字「${kw}」`,
-      remain_copy: (s) => `剩余 ${s}s · 回车复制`,
+      remain_copy: (s) => `回车复制 · 剩余 ${s}s`,
       copy_code: (c) => `复制 ${c}`,
       copy_next: "复制下一周期验证码",
       delete_account: "删除此账户",
@@ -133,8 +133,12 @@ function single(title, subTitle, actions = []) {
   return { Results: [result(title, subTitle, actions)] }
 }
 
+// action 需要稳定显式 Id：query 每次输入都会重跑，若不设 Id，Wox 每次生成随机 id，
+// UI 侧打开表单记住的 action id 在下次 query 后就失效，提交时报
+// "plugin form action not found"（保存静默失败）
 function act(name, icon, fn, opts) {
   return {
+    Id: opts && opts.id,
     Name: name,
     Icon: icon,
     IsDefault: !!(opts && opts.isDefault),
@@ -281,10 +285,15 @@ const lastRendered = new Map()
 // 周期翻转（code 变了）时连 Actions 一起更新，否则复制动作闭包里还是旧 code
 let liveTimer = null
 function startLiveTimer() {
-  if (liveTimer) return
+  // 热重载在同一 Node 进程里加载新模块实例，且不保证调用旧实例的 OnUnload。
+  // 若各实例各自 setInterval，会出现多个 timer 交错 UpdateResult 同一行（标题在
+  // 新旧文案间来回跳）。timer 句柄挂 globalThis 做进程级单例：启动前先杀旧的。
+  if (globalThis.__TOTP_LIVE_TIMER__) clearInterval(globalThis.__TOTP_LIVE_TIMER__)
+  if (liveTimer) clearInterval(liveTimer)
   liveTimer = setInterval(() => {
     tickLive().catch((e) => console.error("tickLive:", e.message))
   }, 1000)
+  globalThis.__TOTP_LIVE_TIMER__ = liveTimer
 }
 
 async function tickLive() {
@@ -333,18 +342,22 @@ async function tickLive() {
 }
 
 function buildActions(a, code) {
+  const rid = rowId(a)
   return [
     act(t("copy_code", code), ICON_COPY, async (actCtx) => {
       await api.Copy(actCtx, { type: "text", text: code })
       await api.Notify(actCtx, t("copied", display(a)))
-    }, { isDefault: true }),
+    }, { isDefault: true, id: `${rid}:copy` }),
     act(t("copy_next"), ICON_EXEC, async (actCtx) => {
       const next = totp(a.secret, 1, a.period, a.digits, a.algo)
       await api.Copy(actCtx, { type: "text", text: next })
       await api.Notify(actCtx, t("copied_next", next))
-    }),
+    }, { id: `${rid}:copy_next` }),
     {
       // 别名用表单收集：文本框 + 提交保存；留空提交即清除别名
+      // Type 必须显式为 "form"；Id 必须稳定，见 act() 上方注释
+      Id: `${rid}:alias`,
+      Type: "form",
       Name: t("set_alias"),
       Icon: ICON_EXEC,
       PreventHideAfterAction: true,
@@ -357,6 +370,8 @@ function buildActions(a, code) {
             DefaultValue: a.alias || "",
             MaxLines: 1,
           },
+          DisabledInPlatforms: [],
+          IsPlatformSpecific: false,
         },
       ],
       OnSubmit: async (formCtx, actionContext) => {
@@ -399,6 +414,10 @@ export const plugin = {
     api.Log(ctx, "Info", `totp plugin init, cacheDir=${dir}`)
     // 热重载/卸载时停掉 liveTimer，避免旧模块的 timer 泄漏
     await api.OnUnload(ctx, async () => {
+      if (globalThis.__TOTP_LIVE_TIMER__) {
+        clearInterval(globalThis.__TOTP_LIVE_TIMER__)
+        globalThis.__TOTP_LIVE_TIMER__ = null
+      }
       if (liveTimer) {
         clearInterval(liveTimer)
         liveTimer = null
