@@ -35,6 +35,11 @@ async function initI18n(ctx) {
       err_prefix: (m) => `Error: ${m}`,
       check_log: "See log ~/.wox/log/wox.log",
       build_row_detail: (n) => `${n} accounts total`,
+      confirm_delete: (d) => `Delete ${d}?`,
+      confirm_hint: "Press enter to confirm delete, or Esc/cancel",
+      confirm_yes: "Yes, delete this account",
+      confirm_cancel: "Cancel",
+      confirm_gone: "Account not found (maybe already deleted)",
     },
     zh: {
       hint_no_op: "回车无操作，继续输入参数",
@@ -59,6 +64,11 @@ async function initI18n(ctx) {
       err_prefix: (m) => `出错: ${m}`,
       check_log: "查看日志 ~/.wox/log/wox.log",
       build_row_detail: (n) => `共 ${n} 个账户`,
+      confirm_delete: (d) => `删除 ${d}？`,
+      confirm_hint: "回车确认删除，Esc 或取消返回",
+      confirm_yes: "确认删除此账户",
+      confirm_cancel: "取消",
+      confirm_gone: "账户不存在（可能已删除）",
     },
   }
   const dict = dicts[probe] || dicts.zh
@@ -134,6 +144,20 @@ function display(a) {
   return `${a.issuer ? a.issuer + " · " : ""}${a.name}`
 }
 
+// confirm 子命令用的账户键。base64url 编码 issuer/name，避免与空格/冒号混淆
+function confirmKey(a) {
+  return Buffer.from(`${a.issuer || ""}\u0000${a.name}`, "utf8").toString("base64url")
+}
+
+function findByConfirmKey(accounts, key) {
+  try {
+    const [issuer, name] = Buffer.from(key, "base64url").toString("utf8").split("\u0000")
+    return accounts.findIndex((a) => (a.issuer || "") === issuer && a.name === name)
+  } catch {
+    return -1
+  }
+}
+
 // ---------- 各命令 ----------
 // 子命令提示：输入为空或部分匹配时显示
 const SUBCMDS = [
@@ -143,6 +167,34 @@ const SUBCMDS = [
 function subcmdHints(cmd) {
   return SUBCMDS.filter((s) => !cmd || s.cmd.startsWith(cmd.toLowerCase())).map((s) =>
     result(s.hint, t("hint_no_op"), [])
+  )
+}
+
+// 删除确认：totp confirm <key> 显示确认行，回车才真删
+async function qConfirm(key) {
+  const accounts = readAccounts()
+  const i = key ? findByConfirmKey(accounts, key) : -1
+  if (i < 0) {
+    return single(t("confirm_gone"), t("view_codes"), [])
+  }
+  const a = accounts[i]
+  const backToList = async (actCtx) => {
+    await api.ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp " })
+  }
+  return single(
+    t("confirm_delete", display(a)),
+    t("confirm_hint"),
+    [
+      act(t("confirm_yes"), ICON_DEL, async (actCtx) => {
+        updateAccounts((accs) => {
+          const j = findByConfirmKey(accs, key)
+          if (j >= 0) accs.splice(j, 1)
+        })
+        await api.Notify(actCtx, t("deleted", display(a)))
+        await backToList(actCtx)
+      }, { isDefault: true }),
+      act(t("confirm_cancel"), ICON_EXEC, backToList),
+    ]
   )
 }
 
@@ -278,11 +330,11 @@ function buildActions(a, code) {
       await api.Notify(actCtx, t("copied_next", next))
     }),
     act(t("delete_account"), ICON_DEL, async (actCtx) => {
-      updateAccounts((accounts) => {
-        accounts.splice(accounts.findIndex((x) => x.name === a.name && (x.issuer || "") === (a.issuer || "")), 1)
+      // 二次确认：跳到 confirm 子命令，回车确认行才真删
+      await api.ChangeQuery(actCtx, {
+        QueryType: "input",
+        QueryText: `totp confirm ${confirmKey(a)}`,
       })
-      await api.Notify(actCtx, t("deleted", display(a)))
-      await api.RefreshQuery(actCtx, { PreserveSelectedIndex: true })
     }),
   ]
 }
@@ -323,12 +375,16 @@ export const plugin = {
       // 空输入或正输入 add 前缀时，列表前置子命令用法提示
       // 空状态不给提示（add 用法在空状态引导里）；有账户时仅当输入为空或 add 前缀才提示，避免干扰搜索
       const accounts = readAccounts()
+      // confirm 是隐藏子命令（SUBCMDS 提示里不出现），"confirm".startsWith(cmd) 会误命中，
+      // 所以单独精确匹配
+      if (cmd === "confirm") return await qConfirm(parts[1])
       const hintable = !cmd || "add".startsWith(cmd)
       const hints = accounts.length > 0 && hintable ? subcmdHints(hintable ? cmd || "" : "") : []
       if (cmd === "add") return await qAdd(parts)
       const list = await qList(search)
       // 空输入时在列表末尾追加 build 时间行，用于确认热重载后的版本
       // build 时间行仅开发构建（--watch 注入 __BUILD_TIME__）时显示
+      // globalThis 而非裸标识符：测试直接 import 源码时没有 Bun define，裸标识符会抛 ReferenceError
       const buildRow = !cmd && globalThis.__BUILD_TIME__ ? [result(`build ${globalThis.__BUILD_TIME__}`, t("build_row_detail", accounts.length), [])] : []
       return { Results: [...hints, ...list.Results, ...buildRow] }
     } catch (e) {
