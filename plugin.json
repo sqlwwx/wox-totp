@@ -2,7 +2,7 @@
   "Id": "ef529aa0-1288-4a8c-b061-b98389491b4e",
   "Name": "i18n:plugin_name",
   "Author": "wuweixing",
-  "Version": "1.3.0",
+  "Version": "1.4.0",
   "MinWoxVersion": "2.4.2",
   "Runtime": "nodejs",
   "Description": "i18n:plugin_description",
@@ -39,7 +39,12 @@
       "err_prefix": "Error: {0}",
       "check_log": "See log ~/.wox/log/wox.log",
       "build_row": "build {0}",
-      "build_row_detail": "{0} accounts total"
+      "build_row_detail": "{0} accounts total",
+      "confirm_delete": "Delete {0}?",
+      "confirm_hint": "Press enter to confirm delete, or Esc/cancel",
+      "confirm_yes": "Yes, delete this account",
+      "confirm_cancel": "Cancel",
+      "confirm_gone": "Account not found (maybe already deleted)"
     },
     "zh_CN": {
       "plugin_name": "TOTP Codes",
@@ -68,7 +73,12 @@
       "err_prefix": "出错: {0}",
       "check_log": "查看日志 ~/.wox/log/wox.log",
       "build_row": "build {0}",
-      "build_row_detail": "共 {0} 个账户"
+      "build_row_detail": "共 {0} 个账户",
+      "confirm_delete": "删除 {0}？",
+      "confirm_hint": "回车确认删除，Esc 或取消返回",
+      "confirm_yes": "确认删除此账户",
+      "confirm_cancel": "取消",
+      "confirm_gone": "账户不存在（可能已删除）"
     }
   }
 }
