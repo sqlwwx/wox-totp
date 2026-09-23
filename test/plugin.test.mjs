@@ -78,10 +78,14 @@ describe("query list", () => {
     expect(row.Tails[0].Text).toMatch(/^\d+s$/)
   })
 
-  test("关键字过滤", async () => {
-    await query(`add ${URI()}`)
-    const hit = await query("git")
-    expect(hit.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
+  test("关键字过滤（原文 + 拼音首字母）", async () => {
+    await query(`add otpauth://totp/微信工作号?secret=${SECRET}`)
+    const hitText = await query("工作号")
+    expect(hitText.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
+    const hitPinyin = await query("wxgz")
+    expect(hitPinyin.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
+    const hitFull = await query("weixingongzuohao")
+    expect(hitFull.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
     const miss = await query("no-such-keyword")
     expect(miss.Results).toHaveLength(1)
     expect(miss.Results[0].SubTitle).toContain("no-such-keyword")

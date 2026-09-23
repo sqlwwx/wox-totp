@@ -7,7 +7,7 @@ Wox 目录插件（非 single-file）：快速查询并复制 TOTP 验证码（G
 - `totp` 触发，列出所有账户及当前验证码，回车复制
 - 列表显示 `issuer · 账户名`，支持 SHA1/SHA256/SHA512、自定义 digits/period
 - 剩余时间显示，支持复制下一周期验证码
-- 关键字过滤账户（匹配账户名和 issuer）
+- 关键字过滤账户：支持原文、拼音全拼（`weixin`）、拼音首字母（`wx`）及中英混合匹配（pinyin-pro）
 - 支持 `otpauth://totp/...` 链接添加，完整保留 URI 参数
 
 ## 命令
@@ -42,7 +42,7 @@ wpm dev.add /Users/wuweixing/lab/sqlwwx/wox-totp
 
 ## 开发
 
-ESM 源码（src/*.mjs），Bun.build 打包成单文件 CJS 到 `dist/index.js`。运行时零 npm 依赖，TOTP 用 Node 内置 crypto 实现。
+ESM 源码（src/*.mjs），Bun.build 打包成单文件 CJS 到 `dist/index.js`（~300KB，主要是 pinyin-pro 词典）。运行时行为依赖 Node 内置 crypto，pinyin-pro 打包进产物、无外部依赖。
 
 ```
 make build       # src → dist/index.js（每次全量构建）

@@ -1,5 +1,5 @@
 // Wox.Plugin.Totp 主入口：init/query
-import { totp, parseUri, remainingSeconds, base32Decode } from "./totp.mjs"
+import { totp, parseUri, remainingSeconds, base32Decode, matchAccount } from "./totp.mjs"
 import { setCacheDir, readAccounts, updateAccounts } from "./store.mjs"
 
 // ---------- i18n ----------
@@ -232,7 +232,7 @@ async function qList(search) {
   }
 
   const kw = search.toLowerCase()
-  const matched = accounts.filter((a) => !kw || a.name.toLowerCase().includes(kw) || (a.issuer || "").toLowerCase().includes(kw))
+  const matched = accounts.filter((a) => !kw || matchAccount(a, kw))
   if (matched.length === 0) {
     return single(t("no_match"), t("no_match_detail", accounts.length, search), [])
   }
@@ -395,4 +395,4 @@ export const plugin = {
 }
 
 // 仅供测试使用（test_totp.js 直接取内部函数）
-export const _test = { base32Decode, totp, parseUri }
+export const _test = { base32Decode, totp, parseUri, matchAccount }

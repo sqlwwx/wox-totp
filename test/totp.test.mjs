@@ -1,6 +1,6 @@
 // TOTP 核心 + store 单测：RFC 6238 官方向量 + otpauth URI 解析
 import { describe, test, expect } from "bun:test"
-import { base32Decode, totp, parseUri, remainingSeconds } from "../src/totp.mjs"
+import { base32Decode, totp, parseUri, remainingSeconds, matchAccount } from "../src/totp.mjs"
 import { readAccounts, updateAccounts, setCacheDir } from "../src/store.mjs"
 import fs from "fs"
 import os from "os"
@@ -59,6 +59,38 @@ describe("remainingSeconds", () => {
     const r = remainingSeconds(30)
     expect(r).toBeGreaterThanOrEqual(1)
     expect(r).toBeLessThanOrEqual(30)
+  })
+})
+
+describe("matchAccount（原文 + 拼音匹配）", () => {
+  const weixin = { name: "微信工作号", issuer: "" }
+  const github = { name: "me@x.com", issuer: "GitHub" }
+  const corp = { name: " ops", issuer: "阿里云" }
+
+  test("原文命中（不区分大小写）", () => {
+    expect(matchAccount(github, "git")).toBe(true)
+    expect(matchAccount(github, "GITHUB")).toBe(true)
+    expect(matchAccount(github, "gitlab")).toBe(false)
+  })
+
+  test("拼音全拼命中", () => {
+    expect(matchAccount(weixin, "weixin")).toBe(true)
+    expect(matchAccount(corp, "aliyun")).toBe(true)
+  })
+
+  test("拼音首字母命中", () => {
+    expect(matchAccount(weixin, "wx")).toBe(true)
+    expect(matchAccount(corp, "aly")).toBe(true)
+  })
+
+  test("中文与英文混合匹配", () => {
+    expect(matchAccount(weixin, "微x")).toBe(true)
+    expect(matchAccount(weixin, "wx工")).toBe(true)
+  })
+
+  test("不命中返回 false", () => {
+    expect(matchAccount(weixin, "qq")).toBe(false)
+    expect(matchAccount(github, "微信")).toBe(false)
   })
 })
 

@@ -1,5 +1,6 @@
 // TOTP 核心：base32 解码 / RFC 6238 生成 / otpauth URI 解析
 import crypto from "crypto"
+import { match } from "pinyin-pro"
 
 /** base32（RFC 4648）解码，容忍小写/空格/padding */
 export function base32Decode(s) {
@@ -59,4 +60,20 @@ export function parseUri(uri) {
 /** 当前周期的剩余秒数 */
 export function remainingSeconds(period = 30) {
   return period - (Math.floor(Date.now() / 1000) % period)
+}
+
+/**
+ * 账户匹配：关键字命中 name/issuer 原文（不区分大小写），
+ * 或经 pinyin-pro 拼音匹配（支持全拼 weixin / 首字母 wx / 中英混合）。
+ * pinyin-pro 异常时退化为纯原文匹配。
+ */
+export function matchAccount(a, kw) {
+  const k = kw.toLowerCase()
+  if (a.name.toLowerCase().includes(k) || (a.issuer || "").toLowerCase().includes(k)) return true
+  const display = `${a.issuer || ""}${a.name}`
+  try {
+    return match(display, k) !== null
+  } catch {
+    return false
+  }
 }
