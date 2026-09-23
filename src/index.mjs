@@ -106,6 +106,11 @@ function result(title, subTitle, actions = [], tails) {
   }
 }
 
+// 列表行稳定 Id：UpdateResult 按 Id 原地刷新剩余时间/验证码
+function rowId(a) {
+  return `totp:${a.issuer || "-"}:${a.name}`
+}
+
 function single(title, subTitle, actions = []) {
   return { Results: [result(title, subTitle, actions)] }
 }
@@ -188,26 +193,89 @@ async function qList(search) {
       return result(a.name, t("err_invalid_secret", e.message), [])
     }
     const remain = remainingSeconds(a.period)
-    return result(`${display(a)}  ${code}`, t("remain_copy", remain), [
-      act(t("copy_code", code), ICON_COPY, async (actCtx) => {
-        await api.Copy(actCtx, { type: "text", text: code })
-        await api.Notify(actCtx, t("copied", display(a)))
-      }, { isDefault: true }),
-      act(t("copy_next"), ICON_EXEC, async (actCtx) => {
-        const next = totp(a.secret, 1, a.period, a.digits, a.algo)
-        await api.Copy(actCtx, { type: "text", text: next })
-        await api.Notify(actCtx, t("copied_next", next))
-      }),
-      act(t("delete_account"), ICON_DEL, async (actCtx) => {
-        updateAccounts((accounts) => {
-          accounts.splice(accounts.findIndex((x) => x.name === a.name && (x.issuer || "") === (a.issuer || "")), 1)
-        })
-        await api.Notify(actCtx, t("deleted", display(a)))
-        await api.RefreshQuery(actCtx, { PreserveSelectedIndex: true })
-      }),
-    ], [{ Type: "text", Text: `${remain}s` }])
+    lastRendered.set(rowId(a), { code, remain })
+    return {
+      Id: rowId(a),
+      ...result(`${display(a)}  ${code}`, t("remain_copy", remain), buildActions(a, code), [{ Type: "text", Text: `${remain}s` }]),
+    }
   })
   return { Results: results }
+}
+
+// 最近一次 query/action 的 ctx，供定时器里的 IsVisible/UpdateResult/Log 使用
+let lastCtx = null
+function captureCtx(ctx) {
+  lastCtx = ctx
+}
+
+// 渲染快照：值变化才发 UpdateResult，避免每秒无谓重绘
+const lastRendered = new Map()
+
+// 实时刷新：每秒重算可见列表行的剩余秒数，UpdateResult 原地更新
+// 周期翻转（code 变了）时连 Actions 一起更新，否则复制动作闭包里还是旧 code
+let liveTimer = null
+function startLiveTimer() {
+  if (liveTimer) return
+  liveTimer = setInterval(tickLive, 1000)
+}
+
+async function tickLive() {
+  if (!lastCtx) return
+  let visible = false
+  try {
+    visible = await api.IsVisible(lastCtx)
+  } catch {
+    return
+  }
+  if (!visible) return
+  const accounts = readAccounts()
+  for (const a of accounts) {
+    let code
+    try {
+      code = totp(a.secret, 0, a.period, a.digits, a.algo)
+    } catch {
+      continue // 无效 secret 行保持原样（query 时已显示错误）
+    }
+    const remain = remainingSeconds(a.period)
+    const prev = lastRendered.get(rowId(a))
+    if (prev && prev.code === code && prev.remain === remain) continue
+    const update = {
+      Id: rowId(a),
+      Title: `${display(a)}  ${code}`,
+      SubTitle: t("remain_copy", remain),
+      Tails: [{ Type: "text", Text: `${remain}s` }],
+    }
+    if (!prev || prev.code !== code) {
+      update.Actions = buildActions(a, code)
+    }
+    lastRendered.set(rowId(a), { code, remain })
+    try {
+      await api.UpdateResult(lastCtx, update)
+    } catch (e) {
+      api.Log(lastCtx, "Warning", `UpdateResult ${rowId(a)}: ${e.message}`)
+    }
+  }
+}
+
+function buildActions(a, code) {
+  return [
+    act(t("copy_code", code), ICON_COPY, async (actCtx) => {
+      await api.Copy(actCtx, { type: "text", text: code })
+      await api.Notify(actCtx, t("copied", display(a)))
+    }, { isDefault: true }),
+    act(t("copy_next"), ICON_EXEC, async (actCtx) => {
+      const next = totp(a.secret, 1, a.period, a.digits, a.algo)
+      await api.Copy(actCtx, { type: "text", text: next })
+      await api.Notify(actCtx, t("copied_next", next))
+    }),
+    act(t("delete_account"), ICON_DEL, async (actCtx) => {
+      updateAccounts((accounts) => {
+        accounts.splice(accounts.findIndex((x) => x.name === a.name && (x.issuer || "") === (a.issuer || "")), 1)
+      })
+      await api.Notify(actCtx, t("deleted", display(a)))
+      await api.RefreshQuery(actCtx, { PreserveSelectedIndex: true })
+    }),
+  ]
 }
 
 // ---------- Wox 插件导出 ----------
@@ -215,6 +283,7 @@ async function qList(search) {
 export const plugin = {
   async init(ctx, params) {
     api = params.API
+    captureCtx(ctx)
     await initI18n(ctx)
     let dir = ""
     try {
@@ -224,9 +293,11 @@ export const plugin = {
       setCacheDir("")
     }
     api.Log(ctx, "Info", `totp plugin init, cacheDir=${dir}`)
+    startLiveTimer()
   },
 
   async query(ctx, query) {
+    captureCtx(ctx)
     const search = (query.Search || "").trim()
     const parts = search.split(/\s+/).filter(Boolean)
     const cmd = parts[0]
