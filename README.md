@@ -33,13 +33,20 @@ wpm dev.add /Users/wuweixing/lab/sqlwwx/wox-totp
 
 ## 存储
 
-存储在 Wox 插件缓存目录（init 时通过 `api.GetCacheFolder` 获取），文件为 `totp-accounts.json`，顶层是 `{ "accounts": [...] }`，每条目存完整 otpauth URI + 解析字段：
+存储在 Wox 插件缓存目录（init 时通过 `api.GetCacheFolder` 获取），文件为 `totp-accounts.enc`，AES-256-GCM 加密，顶层结构 `{ "accounts": [...] }`，每条目存完整 otpauth URI + 解析字段：
 
 ```json
 { "name": "me@x.com", "issuer": "GitHub", "secret": "...", "digits": 6, "period": 30, "algo": "SHA1", "uri": "otpauth://totp/..." }
 ```
 
-注意：明文存储，机器上能读你用户目录的进程都能拿到 secrets。删除插件时 Wox 会自动清理缓存目录。
+### 主密码
+
+- 首次使用输入 `totp unlock` 回车，弹窗设置主密码（≥6 位）；已有明文数据时自动迁移为密文并删除明文文件
+- 密钥由主密码经 scrypt（N=16384）派生，**只存内存**；3 天未验证自动清除，下次查询要求重新输入
+- ⚠️ **免输期 = 插件进程存活时间，上限 3 天**：解锁密钥不在磁盘做任何持久化，Wox 重启（含开机自启）、插件热重载都会清空内存、立即回到锁定态。3 天 TTL 仅在 Wox 长期不重启时生效；且 TTL 不随使用刷新——解锁成功后第 3 天必锁，即使期间一直在用。实际体感通常是「每次重启 Wox 后需重新输一次密码」，这是密钥不落盘的既定取舍
+- `totp lock` 手动锁定，`totp password` 修改主密码（弹窗输入，掩码显示）
+- 密文被篡改时 GCM 校验失败，unlock 拒绝；文件头损坏时改名备份（`.corrupt-<时间戳>`）并报错
+- 写入为「临时文件 + rename」原子落盘，权限 0600
 
 ## 开发
 
