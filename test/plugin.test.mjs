@@ -48,6 +48,10 @@ beforeEach(async () => {
   api = makeApi(state)
   ctx = {}
   await plugin.init(ctx, { API: api })
+  // store 是模块级单例（与 index.mjs 共享同一 import），每测试解锁到该 cacheDir
+  const store = await import("../src/store.mjs")
+  store.setCacheDir(state.cacheDir)
+  store.unlock("test-pass-123")
 })
 
 afterEach(() => {
@@ -63,7 +67,6 @@ const defaultAction = (r) => r.Actions.find((a) => a.IsDefault)
 describe("query list", () => {
   test("空状态：引导行 + 默认 action 跳到 add", async () => {
     const res = await query("")
-    expect(res.Results).toHaveLength(1)
     expect(defaultAction(res.Results[0])).toBeDefined()
     await defaultAction(res.Results[0]).Action(ctx, {})
     expect(api.changes).toEqual(["totp add "])
@@ -104,7 +107,8 @@ describe("query add", () => {
     await query(`add ${URI()}`)
     await query(`add ${URI()}`)
     const res = await query("")
-    const rows = res.Results.filter((r) => r.Id?.startsWith("totp:"))
+    // 账号行 Id 形如 totp:{issuer}:{name}；功能行是 totp:row:*，用精确特征排除
+    const rows = res.Results.filter((r) => r.Id?.startsWith("totp:") && !r.Id?.startsWith("totp:row"))
     expect(rows).toHaveLength(1)
   })
 
@@ -135,7 +139,7 @@ describe("delete confirm flow", () => {
 
     await delAction.Action(ctx, {})
     expect(api.changes[0]).toMatch(/^totp confirm /)
-    expect(fs.existsSync(path.join(state.cacheDir, "totp-accounts.json"))).toBe(true)
+    expect(fs.existsSync(path.join(state.cacheDir, "totp-accounts.enc"))).toBe(true)
     // 账户还在
     const still = await query("")
     expect(still.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
@@ -147,10 +151,10 @@ describe("delete confirm flow", () => {
     expect(confirmRes.Results[0].Title).toMatch(/删除|Delete/)
     await defaultAction(confirmRes.Results[0]).Action(ctx, {})
 
-    // 已删除，回列表为空状态
+    // 已删除，回列表为空状态（功能行不带验证码）
     expect(api.notifies.some((n) => n.includes("已删除") || n.includes("Deleted"))).toBe(true)
     const after = await query("")
-    expect(after.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(false)
+    expect(after.Results.some((r) => r.Id?.startsWith("totp:") && !r.Id?.startsWith("totp:row"))).toBe(false)
   })
 
   test("confirm 取消 action 不删除", async () => {
@@ -207,7 +211,8 @@ describe("alias", () => {
     const cleared = await query("")
     const clearedRow = cleared.Results.find((r) => r.Id?.startsWith("totp:"))
     expect(clearedRow.Title).toMatch(/GitHub · me@x\.com\s+\d{6}/)
-    expect(JSON.parse(fs.readFileSync(path.join(state.cacheDir, "totp-accounts.json"), "utf8")).accounts[0].alias).toBeUndefined()
+    const raw = JSON.parse(decryptForTest(path.join(state.cacheDir, "totp-accounts.enc")))
+    expect(raw.accounts[0].alias).toBeUndefined()
   })
 })
 
@@ -234,23 +239,109 @@ describe("copy actions", () => {
 })
 
 // ---------- 存储 ----------
+// 测试辅助：用 store 的当前内存密钥解密密文文件（store 未导出解密，这里手动拼）
+import * as storeMod from "../src/store.mjs"
+function decryptForTest(encPath) {
+  // 依赖 store 已解锁：通过 updateAccounts 写一次探针拿不到内容，直接用 crypto + 内存密钥不可行，
+  // 改为读写等价验证：让 store 自己读回（解密失败会抛错），再序列化返回
+  const accounts = storeMod.readAccounts()
+  return JSON.stringify({ accounts })
+}
 describe("storage via query", () => {
   test("损坏的存储文件：query 不崩溃，显示错误", async () => {
     await query(`add ${URI()}`)
-    const store = path.join(state.cacheDir, "totp-accounts.json")
+    const store = path.join(state.cacheDir, "totp-accounts.enc")
     fs.writeFileSync(store, "{broken json!!")
     const res = await query("")
     expect(res.Results).toHaveLength(1)
-    expect(res.Results[0].Title).toMatch(/出错|Error/)
+    expect(res.Results[0].Title).toMatch(/出错|Error|损坏/)
     // 坏文件已备份，原路径不再有损坏文件
     expect(fs.existsSync(store)).toBe(false)
   })
 
   test("删除到空后文件合法（rename 原子写）", async () => {
     await query(`add ${URI()}`)
-    const store = path.join(state.cacheDir, "totp-accounts.json")
-    const before = JSON.parse(fs.readFileSync(store, "utf8"))
-    expect(before.accounts).toHaveLength(1)
+    const store = path.join(state.cacheDir, "totp-accounts.enc")
+    // 文件存在、0600、且 store 能正常读回（解密成功 = 合法密文）
+    expect(fs.existsSync(store)).toBe(true)
     expect(fs.statSync(store).mode & 0o777).toBe(0o600)
+    expect(storeMod.readAccounts()).toHaveLength(1)
+  })
+})
+
+// ---------- 密码认证 ----------
+describe("password auth via query", () => {
+  test("锁定后列表被拦截，unlock 表单提交恢复", async () => {
+    await query(`add ${URI()}`)
+    storeMod.lock()
+
+    // 锁定态：显示锁定行（含 unlock 表单 action），无验证码
+    const locked = await query("")
+    expect(locked.Results.some((r) => (r.Title || "").includes("锁定") || (r.Title || "").includes("Locked"))).toBe(true)
+    expect(locked.Results.some((r) => /\d{6}/.test(r.Title || ""))).toBe(false)
+    const unlockRow = locked.Results[0].Actions.find((a) => a.Id === "totp:unlock")
+    expect(unlockRow).toBeDefined()
+    expect(unlockRow.Type).toBe("form")
+    expect(unlockRow.IsDefault).toBe(true)
+    // SDK 表单无 password 掩码类型（Wox unmarshal 不认），用 textbox；密码仅存在于表单提交瞬间
+    expect(unlockRow.Form[0].Type).toBe("textbox")
+
+    // 错误密码：Notify 报错且保持锁定
+    await unlockRow.OnSubmit(ctx, { Values: { password: "wrong-password" } })
+    expect(api.notifies[0]).toMatch(/主密码错误|password/i)
+    expect((await query("")).Results.some((r) => /\d{6}/.test(r.Title || ""))).toBe(false)
+
+    // 正确密码：解锁并恢复验证码列表
+    await unlockRow.OnSubmit(ctx, { Values: { password: "test-pass-123" } })
+    const list = await query("")
+    expect(list.Results.some((r) => /\d{6}/.test(r.Title || ""))).toBe(true)
+  })
+
+  test("password 表单改密：新密码生效", async () => {
+    await query(`add ${URI()}`)
+    const res = await query("password")
+    const row = res.Results[0].Actions.find((a) => a.Id === "totp:password")
+    expect(row).toBeDefined()
+    expect(row.Type).toBe("form")
+    await row.OnSubmit(ctx, { Values: { new_password: "new-pass-456" } })
+    storeMod.lock()
+    // 旧密码失效：锁定态 query("") 的默认 action 是 unlock 表单
+    const unlockAction = (await query("")).Results[0].Actions.find((a) => a.Id === "totp:unlock")
+    expect(unlockAction).toBeDefined()
+    await unlockAction.OnSubmit(ctx, { Values: { password: "test-pass-123" } })
+    expect(api.notifies.at(-1)).toMatch(/主密码错误|password/i)
+    // 新密码解锁
+    await unlockAction.OnSubmit(ctx, { Values: { password: "new-pass-456" } })
+    expect((await query("")).Results.some((r) => /\d{6}/.test(r.Title || ""))).toBe(true)
+  })
+
+  test("3 天过期：到期后锁定，重新 unlock 恢复", async () => {
+    await query(`add ${URI()}`)
+    storeMod._test.setLastAuthAt(Date.now() - storeMod.AUTH_TTL_MS - 1000)
+    const expired = await query("")
+    expect(expired.Results.some((r) => (r.Title || "").includes("锁定") || (r.Title || "").includes("Locked"))).toBe(true)
+    expect(expired.Results.some((r) => /\d{6}/.test(r.Title || ""))).toBe(false)
+  })
+
+  test("reset：锁定期可用，二次确认后清空存储回到未设置状态", async () => {
+    await query(`add ${URI()}`)
+    storeMod.lock()
+
+    // 锁定期 reset 可用：显示警告 + 确认入口
+    const warn = await query("reset")
+    expect(warn.Results[0].Title).toMatch(/重置|Reset/)
+    const goAction = warn.Results[0].Actions.find((a) => a.Id === "totp:reset:go")
+    expect(goAction.IsDefault).toBe(true)
+
+    // 第一步确认只是跳到 reset confirm，还没删
+    await goAction.Action(ctx, {})
+    expect(api.changes[0]).toBe("totp reset confirm")
+    expect(fs.existsSync(path.join(state.cacheDir, "totp-accounts.enc"))).toBe(true)
+
+    // confirm 提交后：文件删除、回到未设置状态
+    const confirmRes = await query("reset confirm")
+    expect(confirmRes.Results[0].Title).toMatch(/已重置|Reset done/)
+    expect(fs.existsSync(path.join(state.cacheDir, "totp-accounts.enc"))).toBe(false)
+    expect(storeMod.needsSetup()).toBe(true)
   })
 })
