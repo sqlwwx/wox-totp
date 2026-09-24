@@ -1,7 +1,7 @@
 // TOTP 核心 + store 单测：RFC 6238 官方向量 + otpauth URI 解析
 import { describe, test, expect } from "bun:test"
 import { base32Decode, totp, parseUri, remainingSeconds, matchAccount } from "../src/totp.mjs"
-import { readAccounts, updateAccounts, setCacheDir } from "../src/store.mjs"
+import { readAccounts, updateAccounts, setCacheDir, unlock } from "../src/store.mjs"
 import fs from "fs"
 import os from "os"
 
@@ -111,6 +111,7 @@ describe("matchAccount（原文 + 拼音匹配）", () => {
 describe("store", () => {
   const tmp = fs.mkdtempSync(os.tmpdir() + "/totp-test-")
   setCacheDir(tmp)
+  unlock("store-test-pass")
 
   test("空文件读出空数组", () => {
     expect(readAccounts()).toEqual([])
