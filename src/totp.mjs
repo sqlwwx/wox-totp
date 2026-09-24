@@ -1,8 +1,18 @@
-// TOTP 核心：base32 解码 / RFC 6238 生成 / otpauth URI 解析
+/**
+ * TOTP 核心算法：base32 解码 / RFC 6238 生成 / otpauth URI 解析 / 账户匹配。
+ * 纯函数、无状态，不依赖 Wox 宿主。
+ * @module totp
+ */
+
 import crypto from "crypto"
 import { match } from "pinyin-pro"
 
-/** base32（RFC 4648）解码，容忍小写/空格/padding */
+/**
+ * base32（RFC 4648）解码，容忍小写/空格/padding。
+ * @param {string} s - base32 字符串
+ * @returns {Buffer} 解码后的字节
+ * @throws {Error} 含非法字符
+ */
 export function base32Decode(s) {
   const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
   let bits = 0, value = 0, out = []
@@ -19,7 +29,16 @@ export function base32Decode(s) {
   return Buffer.from(out)
 }
 
-/** RFC 6238 TOTP，Google Authenticator 兼容 */
+/**
+ * RFC 6238 TOTP，Google Authenticator 兼容。
+ * @param {string} secretB32 - base32 secret
+ * @param {number} [offset=0] - 周期偏移（0=当前码，1=下一周期码）
+ * @param {number} [step=30] - 周期秒数
+ * @param {number} [digits=6] - 验证码位数
+ * @param {string} [algo="SHA1"] - HMAC 算法（SHA1/SHA256/SHA512）
+ * @returns {string} 验证码（前导零保留）
+ * @throws {Error} secret 非法 / 算法不支持
+ */
 export function totp(secretB32, offset = 0, step = 30, digits = 6, algo = "SHA1") {
   const key = base32Decode(secretB32)
   const counter = Math.floor(Date.now() / 1000 / step) + offset
@@ -32,7 +51,12 @@ export function totp(secretB32, offset = 0, step = 30, digits = 6, algo = "SHA1"
   return String(code % 10 ** digits).padStart(digits, "0")
 }
 
-/** 解析 otpauth URI，提取全部参数。secret 必填；其余有默认值。 */
+/**
+ * 解析 otpauth URI，提取全部参数。secret 必填；其余有默认值。
+ * @param {string} uri - otpauth://totp/... 链接
+ * @returns {{name: string, issuer: string, secret: string, digits: number, period: number, algo: string, uri: string}}
+ * @throws {Error} 非 totp 链接 / 缺 secret / 算法不支持
+ */
 export function parseUri(uri) {
   // WHATWG URL 会把 otpauth://totp/LABEL 的 "totp" 当 host，LABEL 当 pathname
   const u = new URL(uri)
@@ -57,7 +81,11 @@ export function parseUri(uri) {
   return { name, issuer, secret, digits, period, algo, uri }
 }
 
-/** 当前周期的剩余秒数 */
+/**
+ * 当前周期的剩余秒数。
+ * @param {number} [period=30] - 周期秒数
+ * @returns {number} 1..period
+ */
 export function remainingSeconds(period = 30) {
   return period - (Math.floor(Date.now() / 1000) % period)
 }
@@ -66,6 +94,9 @@ export function remainingSeconds(period = 30) {
  * 账户匹配：关键字命中 name/issuer/alias 原文（不区分大小写），
  * 或经 pinyin-pro 拼音匹配（支持全拼 weixin / 首字母 wx / 中英混合）。
  * 别名和原名都参与拼音匹配。pinyin-pro 异常时退化为纯原文匹配。
+ * @param {{name: string, issuer?: string, alias?: string}} a - 账户
+ * @param {string} kw - 关键字（调用方已 toLowerCase）
+ * @returns {boolean}
  */
 export function matchAccount(a, kw) {
   const k = kw.toLowerCase()
