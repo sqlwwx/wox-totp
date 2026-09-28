@@ -45,7 +45,10 @@ export const plugin = {
       stopLiveTimer()
       clearRenderCache()
     })
-    startLiveTimer()
+    // 事件驱动刷新：进入插件面板才起 timer，离开即停。
+    // 之前是 init 起常驻 timer + 每秒轮询 IsVisible，面板没开也在跑（7×24 每秒 1 次 RPC）。
+    await api.OnEnterPluginQuery(ctx, () => startLiveTimer())
+    await api.OnLeavePluginQuery(ctx, () => stopLiveTimer())
   },
 
   /**

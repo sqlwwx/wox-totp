@@ -26,7 +26,7 @@ export function clearRenderCache() {
 
 let liveTimer = null
 
-/** 启动秒级刷新 timer。 */
+/** 启动秒级刷新 timer（幂等：重复调用先停旧的）。 */
 export function startLiveTimer() {
   // 热重载在同一 Node 进程里加载新模块实例，且不保证调用旧实例的 OnUnload。
   // 若各实例各自 setInterval，会出现多个 timer 交错 UpdateResult 同一行（标题在
@@ -53,20 +53,23 @@ export function stopLiveTimer() {
 
 /**
  * 单次刷新：对每个账户与上次快照比较，值有变化才 UpdateResult。
- * Wox 未可见 / 存储损坏时静默跳过，避免每秒刷屏。
+ * timer 由 OnEnterPluginQuery/OnLeavePluginQuery 事件驱动，但 Wox 在窗口隐藏/最小化时
+ * 不触发 leave，所以 tick 里查一次 IsVisible：不可见则顺手停掉 timer 自灭，
+ * 之后零 RPC，直到下次 enter 事件重新拉起。存储损坏时静默跳过，避免每秒刷屏。
  * @returns {Promise<void>}
  */
 async function tickLive() {
   const api = getApi()
   const lastCtx = currentCtx()
   if (!lastCtx || !api) return
-  let visible = false
   try {
-    visible = await api.IsVisible(lastCtx)
+    if (!(await api.IsVisible(lastCtx))) {
+      stopLiveTimer() // 窗口已隐藏：自灭 timer，避免隐藏期间继续空转
+      return
+    }
   } catch {
     return
   }
-  if (!visible) return
   let accounts
   try {
     accounts = readAccounts()

@@ -27,10 +27,13 @@ function makeApi(state) {
     ChangeQuery: async (_ctx, q) => api.changes.push(q.QueryText),
     RefreshQuery: async () => { api.refreshes++ },
     IsVisible: async () => api.visible,
-    UpdateResult: async () => true,
+    UpdateResult: async () => {
+      api.updates = (api.updates || 0) + 1
+      return true
+    },
     OnUnload: async (_ctx, cb) => state.unloadCbs.push(cb),
-    OnEnterPluginQuery: async () => {},
-    OnLeavePluginQuery: async () => {},
+    OnEnterPluginQuery: async (_ctx, cb) => state.enterCbs.push(cb),
+    OnLeavePluginQuery: async (_ctx, cb) => state.leaveCbs.push(cb),
   }
   return api
 }
@@ -44,7 +47,12 @@ const query = async (search) => {
 }
 
 beforeEach(async () => {
-  state = { cacheDir: fs.mkdtempSync(path.join(os.tmpdir(), "totp-it-")), unloadCbs: [] }
+  state = {
+    cacheDir: fs.mkdtempSync(path.join(os.tmpdir(), "totp-it-")),
+    unloadCbs: [],
+    enterCbs: [],
+    leaveCbs: [],
+  }
   api = makeApi(state)
   ctx = {}
   await plugin.init(ctx, { API: api })
@@ -266,6 +274,49 @@ describe("storage via query", () => {
     expect(fs.existsSync(store)).toBe(true)
     expect(fs.statSync(store).mode & 0o777).toBe(0o600)
     expect(storeMod.readAccounts()).toHaveLength(1)
+  })
+})
+
+// ---------- 实时刷新 timer 生命周期 ----------
+describe("live timer lifecycle", () => {
+  test("init 后 timer 不启动，进入面板才启动，离开面板即停", async () => {
+    await query(`add ${URI()}`) // 添加账户（不触发 enter 事件）
+
+    // init 不再起常驻 timer：离开态下 tick 无 UpdateResult
+    const { globalState } = await import("../src/live.mjs")
+    globalState.lastRendered.clear()
+
+    // 模拟进入面板：起 timer，1.5s 内应有秒级 UpdateResult
+    for (const cb of state.enterCbs) await cb(ctx)
+    await new Promise((r) => setTimeout(r, 1500))
+    expect(api.updates).toBeGreaterThan(0)
+
+    // 模拟离开面板：timer 停止，计数不再增长
+    for (const cb of state.leaveCbs) await cb(ctx)
+    const n = api.updates
+    await new Promise((r) => setTimeout(r, 1500))
+    expect(api.updates).toBe(n)
+  })
+
+  test("窗口隐藏（leave 不触发）：tick 查 IsVisible 为 false 后 timer 自灭", async () => {
+    await query(`add ${URI()}`)
+    for (const cb of state.enterCbs) await cb(ctx)
+    await new Promise((r) => setTimeout(r, 1200))
+    const before = api.updates
+
+    // 隐藏窗口：Wox 不发 leave，但 IsVisible 变 false
+    api.visible = false
+    await new Promise((r) => setTimeout(r, 1200)) // 下一 tick 查到不可见，自灭
+    const afterStop = api.updates
+    await new Promise((r) => setTimeout(r, 1200))
+    // 自灭后不再有 UpdateResult；隐藏期间最多多 1 次探测
+    expect(api.updates - afterStop).toBe(0)
+
+    // 重新显示：enter 事件拉起 timer，恢复更新
+    api.visible = true
+    for (const cb of state.enterCbs) await cb(ctx)
+    await new Promise((r) => setTimeout(r, 1200))
+    expect(api.updates).toBeGreaterThan(before)
   })
 })
 
