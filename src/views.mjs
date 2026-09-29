@@ -62,7 +62,7 @@ function unlockAction() {
     PreventHideAfterAction: true,
     Form: [
       {
-        Type: "textbox",
+        Type: "password",
         Value: {
           Key: "password",
           Label: t("password_label"),
