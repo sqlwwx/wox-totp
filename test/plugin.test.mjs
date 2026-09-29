@@ -334,8 +334,8 @@ describe("password auth via query", () => {
     expect(unlockRow).toBeDefined()
     expect(unlockRow.Type).toBe("form")
     expect(unlockRow.IsDefault).toBe(true)
-    // SDK 表单无 password 掩码类型（Wox unmarshal 不认），用 textbox；密码仅存在于表单提交瞬间
-    expect(unlockRow.Form[0].Type).toBe("textbox")
+    // 解锁输入框用 password 类型掩码显示（Wox 支持，见 6846089）
+    expect(unlockRow.Form[0].Type).toBe("password")
 
     // 错误密码：Notify 报错且保持锁定
     await unlockRow.OnSubmit(ctx, { Values: { password: "wrong-password" } })
