@@ -89,14 +89,10 @@ describe("query list", () => {
     expect(row.Tails[0].Text).toMatch(/^\d+s$/)
   })
 
-  test("关键字过滤（原文 + 拼音首字母）", async () => {
+  test("关键字过滤（原文）", async () => {
     await query(`add otpauth://totp/微信工作号?secret=${SECRET}`)
     const hitText = await query("工作号")
     expect(hitText.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
-    const hitPinyin = await query("wxgz")
-    expect(hitPinyin.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
-    const hitFull = await query("weixingongzuohao")
-    expect(hitFull.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
     const miss = await query("no-such-keyword")
     expect(miss.Results).toHaveLength(1)
     expect(miss.Results[0].SubTitle).toContain("no-such-keyword")
@@ -189,7 +185,7 @@ describe("delete confirm flow", () => {
 
 // ---------- 别名 ----------
 describe("alias", () => {
-  test("别名显示与搜索（原文 + 拼音首字母）", async () => {
+  test("别名显示与搜索", async () => {
     await query(`add ${URI()}`)
     // 通过表单 action 设置别名
     const list = await query("")
@@ -205,8 +201,8 @@ describe("alias", () => {
     expect(aliasedRow.Title).toMatch(/^工作主号\s+\d{6}$/)
     expect(aliasedRow.SubTitle).toContain("GitHub · me@x.com")
 
-    // 别名原文/首字母/全拼/原名都能搜到
-    for (const kw of ["工作主号", "gzzh", "gongzuozhuhao", "git", "me@x"]) {
+    // 别名原文/原名都能搜到
+    for (const kw of ["工作主号", "git", "me@x"]) {
       const hit = await query(kw)
       expect(hit.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
     }

@@ -4,17 +4,12 @@
   "workspaces": {
     "": {
       "name": "wox-totp",
-      "dependencies": {
-        "pinyin-pro": "^3.29.4",
-      },
       "devDependencies": {
         "@wox-launcher/wox-plugin": "*",
       },
     },
   },
   "packages": {
-    "@wox-launcher/wox-plugin": ["@wox-launcher/wox-plugin@0.0.138", "https://registry.npmjs.org/@wox-launcher/wox-plugin/-/wox-plugin-0.0.138.tgz", {}, "sha512-twwBlU7/MngIX7FFNOk3Dznkz5wKx3HXlPEgyyA8BMDr5xRRTuMpTJHxCGVVrmvFvjkKv+TNi8J9wbJ2RS2swA=="],
-
-    "pinyin-pro": ["pinyin-pro@3.29.4", "", {}, "sha512-SPXpDT2cHEy+d26V1RXYMlVzXN42hotFAak1fzyWPi4o2dKXb61UqD4pzxDJHwk6gbv8vQ6EfErd+hYX0Qhzug=="],
+    "@wox-launcher/wox-plugin": ["@wox-launcher/wox-plugin@0.0.138", "", {}, "sha512-twwBlU7/MngIX7FFNOk3Dznkz5wKx3HXlPEgyyA8BMDr5xRRTuMpTJHxCGVVrmvFvjkKv+TNi8J9wbJ2RS2swA=="],
   }
 }

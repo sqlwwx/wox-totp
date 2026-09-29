@@ -62,8 +62,7 @@ describe("remainingSeconds", () => {
   })
 })
 
-describe("matchAccount（原文 + 拼音匹配）", () => {
-  const weixin = { name: "微信工作号", issuer: "" }
+describe("matchAccount（原文匹配）", () => {
   const github = { name: "me@x.com", issuer: "GitHub" }
   const corp = { name: " ops", issuer: "阿里云" }
 
@@ -73,28 +72,10 @@ describe("matchAccount（原文 + 拼音匹配）", () => {
     expect(matchAccount(github, "gitlab")).toBe(false)
   })
 
-  test("拼音全拼命中", () => {
-    expect(matchAccount(weixin, "weixin")).toBe(true)
-    expect(matchAccount(corp, "aliyun")).toBe(true)
-  })
-
-  test("拼音首字母命中", () => {
-    expect(matchAccount(weixin, "wx")).toBe(true)
-    expect(matchAccount(corp, "aly")).toBe(true)
-  })
-
-  test("中英混合匹配", () => {
-    expect(matchAccount(weixin, "微x")).toBe(true)
-    expect(matchAccount(weixin, "wx工")).toBe(true)
-  })
-
-  test("别名原文与拼音都参与匹配", () => {
+  test("别名原文参与匹配", () => {
     const aliased = { name: "me@x.com", issuer: "GitHub", alias: "工作主号" }
     expect(matchAccount(aliased, "工作主号")).toBe(true) // 别名原文
-    expect(matchAccount(aliased, "gzzh")).toBe(true) // 别名首字母
-    expect(matchAccount(aliased, "gongzuozhuhao")).toBe(true) // 别名全拼
     expect(matchAccount(aliased, "git")).toBe(true) // 原名仍可搜
-    expect(matchAccount(aliased, "wx")).toBe(false) // 别名没让它多出无关命中
   })
 
   test("无别名字段不影响原匹配", () => {
@@ -103,7 +84,7 @@ describe("matchAccount（原文 + 拼音匹配）", () => {
   })
 
   test("不命中返回 false", () => {
-    expect(matchAccount(weixin, "qq")).toBe(false)
+    expect(matchAccount(corp, "qq")).toBe(false)
     expect(matchAccount(github, "微信")).toBe(false)
   })
 })

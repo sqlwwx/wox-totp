@@ -5,7 +5,6 @@
  */
 
 import crypto from "crypto"
-import { match } from "pinyin-pro"
 
 /**
  * base32（RFC 4648）解码，容忍小写/空格/padding。
@@ -91,20 +90,13 @@ export function remainingSeconds(period = 30) {
 }
 
 /**
- * 账户匹配：关键字命中 name/issuer/alias 原文（不区分大小写），
- * 或经 pinyin-pro 拼音匹配（支持全拼 weixin / 首字母 wx / 中英混合）。
- * 别名和原名都参与拼音匹配。pinyin-pro 异常时退化为纯原文匹配。
+ * 账户匹配：关键字命中 name/issuer/alias 原文（不区分大小写）。
+ * 别名和原名都参与匹配。
  * @param {{name: string, issuer?: string, alias?: string}} a - 账户
  * @param {string} kw - 关键字（调用方已 toLowerCase）
  * @returns {boolean}
  */
 export function matchAccount(a, kw) {
   const k = kw.toLowerCase()
-  const fields = [a.name, a.issuer || "", a.alias || ""]
-  if (fields.some((f) => f.toLowerCase().includes(k))) return true
-  try {
-    return fields.some((f) => f && match(f, k) !== null)
-  } catch {
-    return false
-  }
+  return [a.name, a.issuer || "", a.alias || ""].some((f) => f.toLowerCase().includes(k))
 }

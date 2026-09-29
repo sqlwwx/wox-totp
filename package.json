@@ -3,8 +3,5 @@
   "private": true,
   "devDependencies": {
     "@wox-launcher/wox-plugin": "*"
-  },
-  "dependencies": {
-    "pinyin-pro": "^3.29.4"
   }
 }
