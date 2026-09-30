@@ -5,6 +5,7 @@
  */
 
 import crypto from "crypto"
+import { err } from "./i18n.mjs"
 
 /**
  * base32（RFC 4648）解码，容忍小写/空格/padding。
@@ -17,7 +18,7 @@ export function base32Decode(s) {
   let bits = 0, value = 0, out = []
   for (const c of s.toUpperCase().replace(/=+$/, "").replace(/\s/g, "")) {
     const idx = A.indexOf(c)
-    if (idx < 0) throw new Error(`非法 base32 字符: ${c}`)
+    if (idx < 0) throw err("err_invalid_base32_char", c)
     value = (value << 5) | idx
     bits += 5
     if (bits >= 8) {
@@ -60,10 +61,10 @@ export function parseUri(uri) {
   // WHATWG URL 会把 otpauth://totp/LABEL 的 "totp" 当 host，LABEL 当 pathname
   const u = new URL(uri)
   if (u.protocol !== "otpauth:" || u.host !== "totp") {
-    throw new Error("仅支持 otpauth://totp/ 链接")
+    throw err("err_not_totp_uri")
   }
   const secret = u.searchParams.get("secret")
-  if (!secret) throw new Error("缺少 secret 参数")
+  if (!secret) throw err("err_missing_secret")
   const label = decodeURIComponent(u.pathname.replace(/^\//, ""))
   let issuer = "", name = label
   if (label.includes(":")) {
@@ -76,7 +77,7 @@ export function parseUri(uri) {
   const digits = parseInt(u.searchParams.get("digits") || "") || 6
   const period = parseInt(u.searchParams.get("period") || "") || 30
   const algo = (u.searchParams.get("algorithm") || "SHA1").toUpperCase()
-  if (!["SHA1", "SHA256", "SHA512"].includes(algo)) throw new Error(`不支持算法: ${algo}`)
+  if (!["SHA1", "SHA256", "SHA512"].includes(algo)) throw err("err_unsupported_algo", algo)
   return { name, issuer, secret, digits, period, algo, uri }
 }
 

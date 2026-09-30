@@ -5,6 +5,7 @@
  */
 
 import { getApi } from "./context.mjs"
+import { tErr } from "./i18n.mjs"
 
 /** 复制图标（Action Panel 需单色 svg，跟随主题变量） */
 export const ICON_COPY = {
@@ -90,7 +91,7 @@ export function act(name, icon, fn, opts) {
       try {
         await fn(actCtx)
       } catch (e) {
-        await getApi().Notify(actCtx, `TOTP: ${e.message}`)
+        await getApi().Notify(actCtx, `TOTP: ${tErr(e)}`)
       }
     },
   }

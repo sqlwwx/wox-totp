@@ -4,7 +4,7 @@
  * @module views
  */
 
-import { t } from "./i18n.mjs"
+import { t, tErr } from "./i18n.mjs"
 import { getApi } from "./context.mjs"
 import { unlock, changePassword, updateAccounts, needsSetup } from "./store.mjs"
 import { totp } from "./totp.mjs"
@@ -80,7 +80,7 @@ function unlockAction() {
         await getApi().Notify(formCtx, migrated ? t("unlock_migrated") : needsSetupSafe() ? t("password_set") : t("unlocked"))
         await getApi().RefreshQuery(formCtx, { PreserveSelectedIndex: true })
       } catch (e) {
-        await getApi().Notify(formCtx, `TOTP: ${e.message}`)
+        await getApi().Notify(formCtx, `TOTP: ${tErr(e)}`)
       }
     },
   }
@@ -118,7 +118,7 @@ export function passwordAction() {
         await getApi().Notify(formCtx, t("password_changed"))
         await getApi().RefreshQuery(formCtx, { PreserveSelectedIndex: true })
       } catch (e) {
-        await getApi().Notify(formCtx, `TOTP: ${e.message}`)
+        await getApi().Notify(formCtx, `TOTP: ${tErr(e)}`)
       }
     },
   }

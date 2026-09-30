@@ -34,7 +34,7 @@ describe("首次设置（needsSetup）", () => {
   })
 
   test("密码过短拒绝", () => {
-    expect(() => unlock("12345")).toThrow("至少 6 位")
+    expect(() => unlock("12345")).toThrow("err_pwd_short")
   })
 })
 
@@ -55,14 +55,14 @@ describe("锁定与解锁", () => {
   test("lock 后读取抛错，重新 unlock 恢复", () => {
     lock()
     expect(isLocked()).toBe(true)
-    expect(() => readAccounts()).toThrow("锁定")
+    expect(() => readAccounts()).toThrow("err_locked")
     unlock("secret123")
     expect(readAccounts()).toHaveLength(0)
   })
 
   test("错误密码解锁失败且保持锁定", () => {
     lock()
-    expect(() => unlock("wrong-password")).toThrow("主密码错误")
+    expect(() => unlock("wrong-password")).toThrow("err_wrong_password")
     expect(isLocked()).toBe(true)
     // 正确密码可再解锁
     unlock("secret123")
@@ -92,14 +92,14 @@ describe("changePassword", () => {
     updateAccounts((a) => a.push({ name: "y", issuer: "", secret: "S" }))
     changePassword("newpass456")
     lock()
-    expect(() => unlock("secret123")).toThrow("主密码错误")
+    expect(() => unlock("secret123")).toThrow("err_wrong_password")
     unlock("newpass456")
     expect(readAccounts()[0].name).toBe("y")
   })
 
   test("锁定态改密拒绝", () => {
     lock()
-    expect(() => changePassword("newpass456")).toThrow("锁定")
+    expect(() => changePassword("newpass456")).toThrow("err_locked")
   })
 })
 
@@ -112,7 +112,7 @@ describe("密文损坏", () => {
     const raw = fs.readFileSync(encFile())
     raw[raw.length - 1] ^= 0xff
     fs.writeFileSync(encFile(), raw, { mode: 0o600 })
-    expect(() => unlock("secret123")).toThrow("主密码错误")
+    expect(() => unlock("secret123")).toThrow("err_wrong_password")
     expect(isLocked()).toBe(true)
   })
 
@@ -120,7 +120,7 @@ describe("密文损坏", () => {
     unlock("secret123")
     lock()
     fs.writeFileSync(encFile(), "garbage data", { mode: 0o600 })
-    expect(() => unlock("secret123")).toThrow("损坏")
+    expect(() => unlock("secret123")).toThrow("err_corrupt")
     expect(fs.readdirSync(tmp).some((f) => f.includes(".corrupt-"))).toBe(true)
   })
 })

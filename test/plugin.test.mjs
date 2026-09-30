@@ -55,7 +55,8 @@ beforeEach(async () => {
   }
   api = makeApi(state)
   ctx = {}
-  await plugin.init(ctx, { API: api })
+  // PluginDirectory 指向仓库根：initI18n 从那里读 plugin.json 的 I18n 字典
+  await plugin.init(ctx, { API: api, PluginDirectory: path.resolve(import.meta.dir, "..") })
   // store 是模块级单例（与 index.mjs 共享同一 import），每测试解锁到该 cacheDir
   const store = await import("../src/store.mjs")
   store.setCacheDir(state.cacheDir)

@@ -13,7 +13,7 @@ describe("base32Decode", () => {
     expect(base32Decode("gezd gnbv gy3t qojq==").toString("hex")).toBe("31323334353637383930")
   })
   test("非法字符抛错", () => {
-    expect(() => base32Decode("ABC1")).toThrow("非法 base32")
+    expect(() => base32Decode("ABC1")).toThrow("err_invalid_base32_char")
   })
 })
 
@@ -44,13 +44,13 @@ describe("parseUri", () => {
     expect(e.name).toBe("me@x.com")
   })
   test("缺 secret 抛错", () => {
-    expect(() => parseUri("otpauth://totp/x")).toThrow("secret")
+    expect(() => parseUri("otpauth://totp/x")).toThrow("err_missing_secret")
   })
   test("非 otpauth 协议抛错", () => {
-    expect(() => parseUri("https://x.com")).toThrow("otpauth")
+    expect(() => parseUri("https://x.com")).toThrow("err_not_totp_uri")
   })
   test("非法算法抛错", () => {
-    expect(() => parseUri("otpauth://totp/a?secret=JBSWY3DPEHPK3PXP&algorithm=MD5")).toThrow("算法")
+    expect(() => parseUri("otpauth://totp/a?secret=JBSWY3DPEHPK3PXP&algorithm=MD5")).toThrow("err_unsupported_algo")
   })
 })
 

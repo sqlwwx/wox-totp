@@ -8,6 +8,7 @@
  */
 import fs from "fs"
 import crypto from "crypto"
+import { err } from "./i18n.mjs"
 
 const MAGIC = Buffer.from("WOTPE", "utf8") // 5 字节文件标识
 const VERSION = 1
@@ -35,7 +36,7 @@ export function setCacheDir(dir) {
 }
 
 function encPath() {
-  if (!cacheDir) throw new Error("cache folder 不可用")
+  if (!cacheDir) throw err("err_cache_dir")
   return cacheDir + "/totp-accounts.enc"
 }
 function legacyPath() {
@@ -76,11 +77,11 @@ function encryptAccounts(key, salt, accounts) {
 function parseEncFile(raw) {
   const headerLen = MAGIC.length + 1 + SALT_LEN + IV_LEN + 16
   if (raw.length <= headerLen || !raw.subarray(0, MAGIC.length).equals(MAGIC)) {
-    throwCorrupt(raw, "文件头不合法")
+    throwCorrupt(raw, "invalid file header")
   }
   const version = raw[MAGIC.length]
   if (version !== VERSION) {
-    throwCorrupt(raw, `不支持的版本 ${version}`)
+    throwCorrupt(raw, `unsupported version ${version}`)
   }
   let off = MAGIC.length + 1
   const salt = raw.subarray(off, off + SALT_LEN); off += SALT_LEN
@@ -95,7 +96,14 @@ function throwCorrupt(raw, reason) {
   try {
     fs.renameSync(encPath(), backup)
   } catch {}
-  throw new Error(`加密存储损坏（${reason}），已备份到 ${backup}`)
+  // reason 是给日志看的英文诊断短语（invalid header / unsupported version N），
+  // 中文描述由 err_corrupt 模板整体承担
+  throw err("err_corrupt", backupFileName(backup), reason)
+}
+
+// 备份路径放进文案前先去掉目录前缀，避免超长/泄漏缓存目录结构
+function backupFileName(backup) {
+  return backup.split("/").pop()
 }
 
 function writeEncFile(buf) {
@@ -114,7 +122,7 @@ function writeEncFile(buf) {
  */
 export function unlock(password) {
   const pwd = String(password || "")
-  if (pwd.length < 6) throw new Error("密码至少 6 位")
+  if (pwd.length < 6) throw err("err_pwd_short")
   if (needsSetup()) {
     const salt = crypto.randomBytes(SALT_LEN)
     encKey = deriveKey(pwd, salt)
@@ -143,7 +151,7 @@ export function unlock(password) {
     decipher.update(parsed.data)
     decipher.final() // tag 不匹配在这里抛错 = 密码错误
   } catch {
-    throw new Error("主密码错误")
+    throw err("err_wrong_password")
   }
   encKey = key
   encSalt = parsed.salt
@@ -166,7 +174,7 @@ export function maybeExpire() {
 
 /** 解锁状态下读账户；锁定抛错（query 层会在更早处拦截） */
 export function readAccounts() {
-  if (!encKey) throw new Error("已锁定")
+  if (!encKey) throw err("err_locked")
   let raw
   try {
     raw = fs.readFileSync(encPath())
@@ -181,7 +189,7 @@ export function readAccounts() {
     const plain = Buffer.concat([decipher.update(parsed.data), decipher.final()]).toString("utf8")
     return JSON.parse(plain).accounts || []
   } catch (e) {
-    throw new Error(`解密失败（主密码错误或存储损坏）: ${e.message}`)
+    throw err("err_decrypt_failed", e.message)
   }
 }
 
@@ -192,7 +200,7 @@ export function readAccounts() {
  * @throws {Error} 锁定态抛「已锁定，无法写入」
  */
 export function updateAccounts(mutator) {
-  if (!encKey) throw new Error("已锁定，无法写入")
+  if (!encKey) throw err("err_locked_write")
   const accounts = readAccounts()
   const ret = mutator(accounts)
   writeEncFile(encryptAccounts(encKey, encSalt, accounts))
@@ -207,8 +215,8 @@ export function updateAccounts(mutator) {
  */
 export function changePassword(newPwd) {
   const pwd = String(newPwd || "")
-  if (pwd.length < 6) throw new Error("密码至少 6 位")
-  if (!encKey) throw new Error("已锁定")
+  if (pwd.length < 6) throw err("err_pwd_short")
+  if (!encKey) throw err("err_locked")
   const accounts = readAccounts()
   const salt = crypto.randomBytes(SALT_LEN)
   encKey = deriveKey(pwd, salt)

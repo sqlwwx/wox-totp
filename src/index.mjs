@@ -14,7 +14,7 @@
  */
 
 import { setApi, captureCtx, getApi } from "./context.mjs"
-import { initI18n, t } from "./i18n.mjs"
+import { initI18n, t, tErr } from "./i18n.mjs"
 import { setCacheDir } from "./store.mjs"
 import { dispatchQuery } from "./commands.mjs"
 import { startLiveTimer, stopLiveTimer, clearRenderCache } from "./live.mjs"
@@ -31,7 +31,7 @@ export const plugin = {
     const api = params.API
     setApi(api)
     captureCtx(ctx)
-    await initI18n(api, ctx)
+    await initI18n(api, ctx, params.PluginDirectory)
     let dir = ""
     try {
       dir = await api.GetCacheFolder(ctx)
@@ -63,7 +63,7 @@ export const plugin = {
       return await dispatchQuery(ctx, query)
     } catch (e) {
       getApi().Log(ctx, "Error", `query 失败: ${e.stack || e.message}`)
-      return single(t("err_prefix", e.message), t("check_log"), [])
+      return single(t("err_prefix", tErr(e)), t("check_log"), [])
     }
   },
 }

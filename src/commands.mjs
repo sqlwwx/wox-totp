@@ -5,7 +5,7 @@
  */
 
 import { getApi } from "./context.mjs"
-import { t } from "./i18n.mjs"
+import { t, tErr } from "./i18n.mjs"
 import { totp, parseUri, remainingSeconds, matchAccount } from "./totp.mjs"
 import { readAccounts, updateAccounts, resetStorage, lock, isLocked, needsSetup, maybeExpire } from "./store.mjs"
 import { ICON_EXEC, ICON_DEL, ICON_LOCK, result, single, act, display, detail, rowId, confirmKey, findByConfirmKey } from "./ui.mjs"
@@ -79,12 +79,12 @@ export async function qAdd(parts) {
   try {
     entry = parseUri(parts[1])
   } catch (e) {
-    return single(t("err_invalid_uri", e.message), t("err_uri_example"), [])
+    return single(t("err_invalid_uri", tErr(e)), t("err_uri_example"), [])
   }
   try {
     totp(entry.secret, 0, entry.period, entry.digits, entry.algo)
   } catch (e) {
-    return single(t("err_invalid_secret", e.message), t("err_secret_hint"), [])
+    return single(t("err_invalid_secret", tErr(e)), t("err_secret_hint"), [])
   }
   updateAccounts((accounts) => {
     const i = accounts.findIndex((a) => a.name === entry.name && (a.issuer || "") === entry.issuer)
@@ -120,7 +120,7 @@ export async function qList(search) {
     try {
       code = totp(a.secret, 0, a.period, a.digits, a.algo)
     } catch (e) {
-      return result(a.name, t("err_invalid_secret", e.message), [])
+      return result(a.name, t("err_invalid_secret", tErr(e)), [])
     }
     const remain = remainingSeconds(a.period)
     globalState.lastRendered.set(rowId(a), { code, remain })
