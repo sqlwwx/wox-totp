@@ -1,6 +1,6 @@
 # Wox.Plugin.Totp
 
-Wox 目录插件（非 single-file）：快速查询并复制 TOTP 验证码（Google Authenticator 兼容，RFC 6238）。
+Wox 目录插件（非 single-file）：快速查询并复制 TOTP 验证码（Google Authenticator 兼容，RFC 6238）。基于 GPL-3.0 发布。
 
 ## 功能
 
