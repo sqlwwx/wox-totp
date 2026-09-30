@@ -31,6 +31,7 @@ jobs:
       - name: Build and package
         run: |
           bun install --frozen-lockfile
+          make test
           make package
 
       - name: Create release
