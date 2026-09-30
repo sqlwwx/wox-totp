@@ -13,6 +13,27 @@ import { lockedResult, passwordAction, buildActions } from "./views.mjs"
 import { globalState } from "./live.mjs"
 
 /**
+ * 按锁定状态同步 Wox 查询建议命令（RegisterQueryCommands 是全量替换）。
+ * 锁定态不注册任何命令 → 查询框无子命令建议；解锁后注册 add/password/lock。
+ * RegisterQueryCommands 在老版本 Wox 上可能不存在，失败静默（只影响建议，不影响功能）。
+ * @param {Object} ctx - Wox 上下文
+ * @returns {Promise<void>}
+ */
+export async function syncQueryCommands(ctx) {
+  const unlocked = !isLocked() && !needsSetup()
+  if (unlocked === globalState.commandsSyncedUnlocked) return // 状态没变不重复注册
+  const api = getApi()
+  if (typeof api.RegisterQueryCommands !== "function") return
+  try {
+    const commands = unlocked
+      ? ["add", "password", "lock"].map((cmd) => ({ Command: cmd, Description: t(`subcmd_${cmd}`) }))
+      : []
+    await api.RegisterQueryCommands(ctx, commands)
+    globalState.commandsSyncedUnlocked = unlocked
+  } catch {}
+}
+
+/**
  * 重置子命令（忘记密码的兜底）：硬重置，删除加密文件回到未设置状态。
  * 锁定期可用（这正是它存在的意义——密码忘了时唯一出路）。
  * 重置时读不出数据（不知道密码），账户全部丢失且不可恢复，所以必须二次确认：
@@ -148,11 +169,15 @@ export async function qList(search) {
  */
 export async function dispatchQuery(ctx, query) {
   const api = getApi()
+  // 注册过 QueryCommands 后 core 会把命令解析进 query.Command（如 "totp add aaa" → Command="add", Search="aaa"），
+  // 未注册时 Search 含命令前缀（"add ..."）→ 自己 split 出 cmd，两种形态都要兼容
   const search = (query.Search || "").trim()
-  const parts = search.split(/\s+/).filter(Boolean)
-  const cmd = parts[0]
+  const cmd = (query.Command || "").trim() || search.split(/\s+/).filter(Boolean)[0] || ""
+  const rest = query.Command ? search : search.split(/\s+/).filter(Boolean).slice(1).join(" ")
+  const parts = [cmd, ...rest.split(/\s+/).filter(Boolean)]
 
   maybeExpire() // 3 天未验证自动清内存密钥
+  await syncQueryCommands(ctx) // 状态变化时同步查询建议命令
   if (cmd === "unlock") return lockedResult() // 回车弹表单，密码掩码输入
   if (cmd === "reset") return qReset(parts) // 忘记密码时的硬重置入口（锁定期也可用）
   if (cmd === "lock") {

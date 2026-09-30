@@ -17,6 +17,8 @@ import { buildActions } from "./views.mjs"
  */
 export const globalState = {
   lastRendered: new Map(),
+  /** 上次同步到 Wox 的命令建议状态（true=已注册解锁命令） */
+  commandsSyncedUnlocked: null,
 }
 
 /** 清空渲染快照（重置/删除账户后调用，避免残留旧行）。 */

@@ -46,6 +46,12 @@ const query = async (search) => {
   return await plugin.query(ctx, q)
 }
 
+// Wox 注册 QueryCommands 后的形态：core 把命令解析进 Command，Search 只含参数
+const queryCmd = async (command, search) => {
+  const q = { Search: search, Command: command, TriggerKeyword: "totp", Type: "input" }
+  return await plugin.query(ctx, q)
+}
+
 beforeEach(async () => {
   state = {
     cacheDir: fs.mkdtempSync(path.join(os.tmpdir(), "totp-it-")),
@@ -106,6 +112,11 @@ describe("query add", () => {
     const res = await query(`add ${URI()}`)
     expect(res.Results[0].Title).toContain("GitHub · me@x.com")
     expect(api.notifies).toHaveLength(0)
+  })
+
+  test("core 命令路由形态（Command=add + Search=URI）也走 qAdd", async () => {
+    const res = await queryCmd("add", URI())
+    expect(res.Results[0].Title).toContain("GitHub · me@x.com")
   })
 
   test("同 issuer+name 覆盖，不重复", async () => {
