@@ -16,6 +16,11 @@
       ]
     }
   },
+  "Commands": [
+    { "Command": "add", "Description": "i18n:subcmd_add" },
+    { "Command": "password", "Description": "i18n:subcmd_password" },
+    { "Command": "lock", "Description": "i18n:subcmd_lock" }
+  ],
   "Entry": "index.js",
   "SupportedOS": ["windows", "linux", "darwin"],
   "Features": [
