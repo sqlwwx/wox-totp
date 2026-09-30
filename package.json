@@ -1,7 +1,9 @@
 {
   "name": "wox-totp",
+  "version": "0.0.1",
   "private": true,
   "devDependencies": {
-    "@wox-launcher/wox-plugin": "*"
+    "@wox-launcher/wox-plugin": "*",
+    "standard-version": "^9.5.0"
   }
 }

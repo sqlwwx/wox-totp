@@ -1,0 +1,3 @@
+{
+  "postbump": "bun scripts/sync-version.mjs && git add plugin.json"
+}
