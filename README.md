@@ -15,11 +15,17 @@ Wox 目录插件（非 single-file）：快速查询并复制 TOTP 验证码（G
 
 ```
 totp                        列出账户及验证码
-totp <关键字>               过滤账户
+totp <关键字>               过滤账户（issuer/账户名/别名，不区分大小写）
 totp add <otpauth://totp/...>     通过 otpauth 链接添加（自动解析 issuer/账户名，同 issuer+name 覆盖）
+totp unlock                 解锁 / 设置主密码（弹窗表单，密码掩码输入）
+totp lock                   立即锁定（清除内存密钥）
+totp password               修改主密码（弹窗输入，数据保留）
+totp reset                  危险：清空全部数据（忘记密码的兜底，跳 totp reset confirm 二次确认才真删）
 ```
 
-删除不走子命令：列表结果的操作面板里有「删除此账户」，会跳到 `totp confirm` 确认行，回车才真删。
+- 删除不走子命令：列表结果的操作面板里有「删除此账户」，会跳到确认行，回车才真删。
+- 锁定/未设置主密码时，除 `unlock`/`reset` 外的查询全部拦截为解锁表单；查询框的子命令建议（add/password/lock）解锁后才显示。
+- 空输入列表尾部附功能行（按常用度）：锁定、添加账号、修改密码、重置。
 
 ## 安装
 
@@ -29,7 +35,7 @@ totp add <otpauth://totp/...>     通过 otpauth 链接添加（自动解析 iss
 wpm dev.add /Users/wuweixing/lab/sqlwwx/wox-totp
 ```
 
-`wpm dev.add` 注册根目录后，Wox 加载根目录 `plugin.json`；构建时会把 `plugin.json` 拷入 `dist/`（官方模板结构），热重载读 `dist/plugin.json`。
+`wpm dev.add` 注册根目录后，Wox 读取根目录 `plugin.json` 做元数据校验；构建时会把 `plugin.json` 拷入 `dist/`，启动/热重载实际读取的是 `dist/plugin.json`（Entry "index.js" 相对 dist/ 解析）。无 `dist/plugin.json` 时重载失败，所以注册后先 `make build`。
 
 ## 存储
 
@@ -62,12 +68,19 @@ make clean       # 删 dist
 结构：
 
 ```
-plugin.json     # Wox 元数据（Entry: index.js 指向 dist 产物）
+plugin.json     # Wox 元数据 + 全部 en_US/zh_CN i18n 文案（运行时读的是 dist/ 下拷贝）
 src/
-  totp.mjs      # base32 / RFC 6238 / otpauth URI 解析与构造
-  store.mjs     # 账户存储
-  index.mjs     # init/query 命令逻辑
-build.mjs       # Bun.build 打包脚本
+  index.mjs     # init/query 生命周期装配，导出 plugin = { init, query }
+  totp.mjs      # base32 / RFC 6238 / otpauth URI 解析与构造（纯函数无状态）
+  store.mjs     # AES-256-GCM 加密存储 + 解锁会话（scrypt 派生，密钥只存内存）
+  commands.mjs  # 子命令分发与查询路由（dispatchQuery）
+  views.mjs     # 结果行与表单 action（锁定态/账号动作）
+  ui.mjs        # Wox Result/Action 基础构造
+  live.mjs      # 验证码每秒实时刷新（进面板才起 timer，离开即停）
+  i18n.mjs      # 翻译运行时，读 plugin.json 内嵌字典
+  context.mjs   # 模块级 api/ctx 存取
+build.mjs       # Bun.build 打包脚本（src → dist/index.js 单文件 CJS）
+test/           # bun test，与 src 模块一一对应（<module>.test.mjs）
 dist/           # 产物（Wox watch 这个目录实现热重载）
 ```
 
