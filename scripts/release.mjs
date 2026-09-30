@@ -5,6 +5,8 @@
 import { execSync } from "child_process"
 
 const run = (cmd, opts = {}) => execSync(cmd, { stdio: "inherit", ...opts })
+// 工作区检查：显式 pipe 捕获输出（inherit 时 execSync 返回 null）
+const out = (cmd) => execSync(cmd, { encoding: "utf8" })
 
 const kind = process.argv[2]
 if (!["patch", "minor", "major"].includes(kind)) {
@@ -13,7 +15,7 @@ if (!["patch", "minor", "major"].includes(kind)) {
 }
 
 // 工作区必须干净：release commit（含 CHANGELOG + 双版本号）要干净落在 pull 后的 master 上
-if (run("git status --porcelain", { encoding: "utf8" }).trim()) {
+if (out("git status --porcelain").trim()) {
   console.error("工作区有未提交变更，先提交再发版")
   process.exit(1)
 }
