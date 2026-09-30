@@ -1,3 +1,5 @@
 {
-  "postbump": "bun scripts/sync-version.mjs && git add plugin.json"
+  "scripts": {
+    "postbump": "bun scripts/sync-version.mjs && git add plugin.json"
+  }
 }
