@@ -116,7 +116,11 @@ export async function qAdd(parts) {
     if (i >= 0) accounts[i] = entry
     else accounts.push(entry)
   })
-  return single(t("added", display(entry)), t("view_codes"), [])
+  // 添加成功直接显示该账户的验证码行（qList 全量渲染后过滤出这一条，倒计时/复制动作都在）
+  const list = await qList("")
+  return {
+    Results: list.Results.filter((r) => r.Id === rowId(entry)),
+  }
 }
 
 /**
@@ -204,7 +208,7 @@ export async function dispatchQuery(ctx, query) {
             lock()
             await api.Notify(actCtx, t("locked_title"))
             await api.RefreshQuery(actCtx, { PreserveSelectedIndex: true })
-          }, { isDefault: true, id: "totp:row:lock" }),
+          }, { isDefault: true, id: "totp:row:lock", preventHide: true }),
         ], null, "totp:row:lock-item", 900),
         result(t("action_add"), t("subcmd_add"), [
           act(t("action_add"), ICON_EXEC, async (actCtx) => {

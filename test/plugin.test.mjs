@@ -108,9 +108,12 @@ describe("query list", () => {
 
 // ---------- add ----------
 describe("query add", () => {
-  test("合法 URI 添加成功", async () => {
+  test("合法 URI 添加成功，直接显示该账户验证码行", async () => {
     const res = await query(`add ${URI()}`)
+    // 新交互：add 成功 = 只显示刚添加账户的验证码行（含倒计时/复制动作），不再显示"添加成功"行
+    expect(res.Results).toHaveLength(1)
     expect(res.Results[0].Title).toContain("GitHub · me@x.com")
+    expect(res.Results[0].Title).toMatch(/\d{6}/)
     expect(api.notifies).toHaveLength(0)
   })
 

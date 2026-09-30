@@ -40,7 +40,7 @@ export function lockedResult(errLine) {
       result(t("reset_entry"), t("reset_hint"), [
         act(t("reset_entry"), ICON_DEL, async (actCtx) => {
           await getApi().ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp reset" })
-        }, { isDefault: true, id: "totp:locked:reset" }),
+        }, { isDefault: true, id: "totp:locked:reset", preventHide: true }),
       ], null, "totp:locked:reset-row", 600),
     ],
   }
@@ -183,6 +183,6 @@ export function buildActions(a, code) {
         QueryType: "input",
         QueryText: `totp confirm ${confirmKey(a)}`,
       })
-    }),
+    }, { id: `${rid}:delete`, preventHide: true }),
   ]
 }
