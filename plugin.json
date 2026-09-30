@@ -72,9 +72,9 @@
       "alias_saved": "Alias saved: {0}",
       "alias_cleared": "Alias cleared",
       "locked_title": "🔒 Locked",
-      "locked_hint": "Enter totp unlock to view codes",
-      "locked_retry": "Check the password, or re-enter totp unlock",
-      "locked_setup_hint": "Set a master password: run totp unlock (min 6 chars). It encrypts stored accounts; re-entry required every 3 days",
+      "locked_hint": "Press enter to unlock and view codes",
+      "locked_retry": "Wrong password, press enter to retry",
+      "locked_setup_hint": "Press enter to set a master password (min 6 chars). It encrypts stored accounts; re-entry required every 3 days",
       "unlock_usage": "totp unlock",
       "password_label": "Master password",
       "new_password_label": "New master password (min 6 chars)",
@@ -89,7 +89,7 @@
       "reset_hint": "Use only if you forgot the master password. Enter the confirm action to proceed",
       "reset_confirm_yes": "Confirm reset (data lost)",
       "reset_done": "Reset done",
-      "reset_done_hint": "Storage cleared. Run totp unlock to set a new master password (accounts need re-add)"
+      "reset_done_hint": "Storage cleared. Press enter on the unlock row to set a new master password (accounts need re-add)"
     },
     "zh_CN": {
       "plugin_name": "TOTP Codes",
@@ -148,9 +148,9 @@
       "alias_saved": "别名已保存: {0}",
       "alias_cleared": "别名已清除",
       "locked_title": "🔒 已锁定",
-      "locked_hint": "输入 totp unlock 查看验证码",
-      "locked_retry": "密码不对，重新输入 totp unlock",
-      "locked_setup_hint": "设置主密码: 输入 totp unlock（至少6位），用于加密存储，每 3 天需重新输入",
+      "locked_hint": "回车解锁查看验证码",
+      "locked_retry": "密码不对，回车重试",
+      "locked_setup_hint": "回车设置主密码（至少6位），用于加密存储，每 3 天需重新输入",
       "unlock_usage": "totp unlock",
       "password_label": "主密码",
       "new_password_label": "新主密码（至少6位）",
@@ -165,7 +165,7 @@
       "reset_hint": "仅在忘记主密码时使用。回车确认重置",
       "reset_confirm_yes": "确认重置（数据将丢失）",
       "reset_done": "已重置",
-      "reset_done_hint": "存储已清空。输入 totp unlock 重新设置主密码（账户需重新添加）"
+      "reset_done_hint": "存储已清空。回车解锁行重新设置主密码（账户需重新添加）"
     }
   }
 }
