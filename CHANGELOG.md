@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.3](https://github.com/sqlwwx/wox-totp/compare/v0.0.2...v0.0.3) (2026-09-30)
+
+
+### Bug Fixes
+
+* .versionrc postbump 须嵌套在 scripts 键下（standard-version 源码 run-lifecycle-script 读 args.scripts） ([56ec3b2](https://github.com/sqlwwx/wox-totp/commit/56ec3b2e4683c576d3271d7ad3c2a76c65db57c0))
+
 ### 0.0.2 (2026-09-30)
 
 
