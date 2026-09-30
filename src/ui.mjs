@@ -79,6 +79,8 @@ export function single(title, subTitle, actions = []) {
  * @param {Object} [opts]
  * @param {string} [opts.id] - 稳定 action Id（强烈建议显式设置）
  * @param {boolean} [opts.isDefault] - 是否回车默认触发
+ * @param {boolean} [opts.preventHide] - 执行后保持 Wox 窗口可见（ChangeQuery 引导类 action 必开，
+ *   否则 UI 在回调完成前就 hideWindow，ChangeQuery 的结果面板随窗口一起消失）
  * @returns {Object} Wox QueryResultAction 形状
  */
 export function act(name, icon, fn, opts) {
@@ -87,6 +89,7 @@ export function act(name, icon, fn, opts) {
     Name: name,
     Icon: icon,
     IsDefault: !!(opts && opts.isDefault),
+    PreventHideAfterAction: !!(opts && opts.preventHide),
     Action: async (actCtx) => {
       try {
         await fn(actCtx)

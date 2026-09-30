@@ -25,10 +25,10 @@ export function qReset(parts) {
     return single(t("reset_warning"), t("reset_hint"), [
       act(t("reset_confirm_yes"), ICON_DEL, async (actCtx) => {
         await getApi().ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp reset confirm" })
-      }, { isDefault: true, id: "totp:reset:go" }),
+      }, { isDefault: true, id: "totp:reset:go", preventHide: true }),
       act(t("confirm_cancel"), ICON_EXEC, async (actCtx) => {
         await getApi().ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp " })
-      }, { id: "totp:reset:cancel" }),
+      }, { id: "totp:reset:cancel", preventHide: true }),
     ])
   }
   resetStorage()
@@ -62,8 +62,8 @@ export async function qConfirm(key) {
         })
         await getApi().Notify(actCtx, t("deleted", display(a)))
         await backToList(actCtx)
-      }, { isDefault: true }),
-      act(t("confirm_cancel"), ICON_EXEC, backToList),
+      }, { isDefault: true, preventHide: true }),
+      act(t("confirm_cancel"), ICON_EXEC, backToList, { preventHide: true }),
     ]
   )
 }
@@ -75,6 +75,10 @@ export async function qConfirm(key) {
  * @returns {Promise<{Results: Array<Object>}>}
  */
 export async function qAdd(parts) {
+  // 无 URI（刚被引导填入 "totp add " 还没粘贴）：显示等待粘贴的引导行，不算错误
+  if (!parts[1]) {
+    return single(t("add_prompt"), t("err_uri_example"), [])
+  }
   let entry
   try {
     entry = parseUri(parts[1])
@@ -105,7 +109,7 @@ export async function qList(search) {
     return single(t("empty_title"), t("empty_subtitle"), [
       act(t("action_add"), ICON_EXEC, async (actCtx) => {
         await getApi().ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp add " })
-      }, { isDefault: true }),
+      }, { isDefault: true, id: "totp:empty:add", preventHide: true }),
     ])
   }
 
@@ -180,7 +184,7 @@ export async function dispatchQuery(ctx, query) {
         result(t("action_add"), t("subcmd_add"), [
           act(t("action_add"), ICON_EXEC, async (actCtx) => {
             await api.ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp add " })
-          }, { isDefault: true, id: "totp:row:add" }),
+          }, { isDefault: true, id: "totp:row:add", preventHide: true }),
         ], null, "totp:row:add-item", 800),
         result(t("subcmd_password"), t("subcmd_password_detail"), [
           passwordAction(),
@@ -188,7 +192,7 @@ export async function dispatchQuery(ctx, query) {
         result(t("subcmd_reset"), t("subcmd_reset_detail"), [
           act(t("subcmd_reset"), ICON_DEL, async (actCtx) => {
             await api.ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp reset" })
-          }, { isDefault: true, id: "totp:row:reset" }),
+          }, { isDefault: true, id: "totp:row:reset", preventHide: true }),
         ], null, "totp:row:reset-item", 600),
       ]
     : []
