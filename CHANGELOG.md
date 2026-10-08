@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.6](https://github.com/sqlwwx/wox-totp/compare/v0.0.5...v0.0.6) (2026-10-08)
+
+
+### Features
+
+* 密文云同步开关（默认开启，OnSettingChanged 切换时重写密文） ([f8389f4](https://github.com/sqlwwx/wox-totp/commit/f8389f41d6d56c542f9535684fe7b1252e3852ca))
+
 ### [0.0.5](https://github.com/sqlwwx/wox-totp/compare/v0.0.4...v0.0.5) (2026-10-08)
 
 
