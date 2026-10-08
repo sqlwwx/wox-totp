@@ -1,7 +1,7 @@
 // store 加密存储单测：AES-256-GCM + scrypt、主密码生命周期、setting 载体读写
 import { describe, test, expect, beforeEach } from "bun:test"
 import {
-  initStore, readAccounts, updateAccounts, unlock, lock, resetStorage,
+  initStore, readAccounts, updateAccounts, unlock, lock, resetStorage, onCloudSyncChanged,
   needsSetup, isUnlocked, isLocked, maybeExpire, changePassword, AUTH_TTL_MS, _test,
 } from "../src/store.mjs"
 
@@ -93,6 +93,32 @@ describe("setting 载体持久化", () => {
   test("SetSetting 失败：写入抛错，数据不静默丢失", async () => {
     api.SetSetting = async () => ({ Success: false, ErrMsg: "db locked" })
     await expect(updateAccounts((a) => a.push({ name: "f", issuer: "", secret: "S" }))).rejects.toThrow("err_save_failed")
+  })
+
+  test("cloud_sync=false：persist 带 IsLocal=true 只存本地", async () => {
+    settings.set("cloud_sync", "false")
+    await initStore(api, {})
+    const calls = []
+    api.SetSetting = async (_c, o) => { calls.push(o); settings.set(o.Key, o.Value); return { Success: true } }
+    await unlock("secret123")
+    await updateAccounts((a) => a.push({ name: "n", issuer: "", secret: "S" }))
+    expect(calls[0].IsLocal).toBe(true)
+  })
+
+  test("cloud_sync 开启时 onCloudSyncChanged 立即重写密文", async () => {
+    settings.set("cloud_sync", "false")
+    await initStore(api, {})
+    await unlock("secret123")
+    // 切到同步：立即重写
+    const calls = []
+    api.SetSetting = async (_c, o) => { calls.push(o); settings.set(o.Key, o.Value); return { Success: true } }
+    await onCloudSyncChanged("true")
+    expect(calls).toHaveLength(1)
+    expect(calls[0].IsLocal).toBe(false)
+    // 关同步：不重写（本地数据不动）
+    calls.length = 0
+    await onCloudSyncChanged("false")
+    expect(calls).toHaveLength(0)
   })
 
   test("改密后新密码可解锁、旧密码失效", async () => {

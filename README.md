@@ -45,15 +45,17 @@ wpm dev.add /Users/wuweixing/lab/sqlwwx/wox-totp
 
 ### 备份与跨设备迁移
 
-⚠️ **TOTP 密文刻意不参与 Wox 云同步**（写入用 `IsLocal: true`）：密文等于 2FA 凭证本体，不应上传到任何第三方服务器。即使你在 Wox 里登录了云同步账号，TOTP 账号也**不会**出现在其他设备上——跨机器迁移走手动备份：
+密文默认经 **Wox 云同步**多设备同步（插件设置里的「云同步加密库」开关，默认开启）。密文是 AES-256-GCM 加密的，同步只上传密文；但服务端密文可被离线无限期暴力破解，**主密码请用 12 位以上**。关掉开关则只存本地 wox.db（`IsLocal`）。
+
+不依赖云同步的手动迁移：
 
 ```bash
-# 备份：导出密文（base64，无主密码不可解密，可放心存放）
+# 备份：导出密文（base64，无主密码不可解密）
 sqlite3 ~/.wox/wox-user/wox.db \
   "SELECT value FROM plugin_settings WHERE plugin_id='ef529aa0-1288-4a8c-b061-b98389491b4e' AND key='vault'" \
   > totp-vault-backup.txt
 
-# 还原（新机器需先装插件并设置一次主密码，然后退出 Wox 执行）：
+# 还原（新机器需先装插件，然后退出 Wox 执行）：
 V=$(cat totp-vault-backup.txt)
 sqlite3 ~/.wox/wox-user/wox.db \
   "INSERT OR REPLACE INTO plugin_settings (plugin_id, key, value, is_local) \

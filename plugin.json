@@ -14,10 +14,23 @@
   "Features": [
     { "Name": "ignoreAutoScore" }
   ],
+  "SettingDefinitions": [
+    {
+      "Type": "checkbox",
+      "Value": {
+        "Key": "cloud_sync",
+        "Label": "i18n:settings_cloud_sync",
+        "DefaultValue": "true",
+        "Tooltip": "i18n:settings_cloud_sync_tip"
+      }
+    }
+  ],
   "I18n": {
     "en_US": {
       "plugin_name": "TOTP Codes",
       "plugin_description": "Query and copy TOTP codes, local storage, supports otpauth:// URIs",
+      "settings_cloud_sync": "Cloud sync encrypted vault (Wox cloud sync)",
+      "settings_cloud_sync_tip": "Vault is AES-256-GCM encrypted; sync uploads only ciphertext. Requires a strong master password (12+ chars) as ciphertext on the server can be brute-forced offline.",
       "language_probe": "en",
       "hint_add_usage": "totp add <otpauth://totp/...>",
       "hint_no_op": "Enter does nothing, keep typing parameters",
@@ -94,6 +107,8 @@
     "zh_CN": {
       "plugin_name": "TOTP Codes",
       "plugin_description": "TOTP 验证码查询/复制，本地存储，支持 otpauth:// 添加",
+      "settings_cloud_sync": "云同步加密库（经 Wox 云同步）",
+      "settings_cloud_sync_tip": "密文为 AES-256-GCM 加密，同步只上传密文。服务端密文可被离线暴力破解，请务必使用强主密码（12 位以上）。",
       "language_probe": "zh",
       "hint_add_usage": "totp add <otpauth://totp/...>",
       "hint_no_op": "回车无操作，继续输入参数",

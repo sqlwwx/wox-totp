@@ -15,7 +15,7 @@
 
 import { setApi, captureCtx, getApi } from "./context.mjs"
 import { initI18n, t, tErr } from "./i18n.mjs"
-import { initStore } from "./store.mjs"
+import { initStore, onCloudSyncChanged } from "./store.mjs"
 import { dispatchQuery } from "./commands.mjs"
 import { startLiveTimer, stopLiveTimer, clearRenderCache } from "./live.mjs"
 import { single } from "./ui.mjs"
@@ -34,6 +34,15 @@ export const plugin = {
     await initI18n(api, ctx, params.PluginDirectory)
     // 加密存储改用插件 setting（升级/卸载缓存目录会被 Wox 清掉，setting 保留）
     await initStore(api, ctx)
+    // 云同步开关变化：开启时立即重写密文进云同步 oplog（失败由回调内 Notify 提示）
+    await api.OnSettingChanged(ctx, async (cbCtx, key, value) => {
+      if (key !== "cloud_sync") return
+      try {
+        await onCloudSyncChanged(value)
+      } catch (e) {
+        api.Log(cbCtx, "Error", `cloud_sync 切换后重写密文失败: ${e.message}`)
+      }
+    })
     // 热重载/卸载时停掉 liveTimer，避免旧模块的 timer 泄漏
     await api.OnUnload(ctx, async () => {
       stopLiveTimer()

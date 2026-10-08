@@ -26,6 +26,7 @@ function makeApi(state) {
       state.settings.set(option.Key, option.Value)
       return { Success: true }
     },
+    OnSettingChanged: async (_ctx, _cb) => {},
     Log: async (_ctx, level, msg) => api.logs.push(`${level}: ${msg}`),
     Notify: async (_ctx, msg) => api.notifies.push(msg),
     Copy: async (_ctx, p) => api.copies.push(p.text),

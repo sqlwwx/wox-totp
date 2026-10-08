@@ -24,6 +24,7 @@ const SETTING_KEY = "vault"
 
 let storeApi = null
 let storeCtx = null
+let cloudSync = true // 插件设置 cloud_sync（默认 true）：false 时密文只存本地不上云同步
 let encBlob = null // Buffer 密文（MAGIC+ver+salt+iv+tag+data）；null = 从未设置过主密码
 let encKey = null // Buffer(32)，解锁后缓存，lock/过期/进程退出即消失
 let encSalt = null
@@ -42,12 +43,31 @@ export async function initStore(api, ctx) {
   encKey = null
   encSalt = null
   lastAuthAt = 0
+  // 云同步开关：设置缺省时用默认值 true（SettingDefinitions DefaultValue 一致）
+  try {
+    const v = await api.GetSetting(ctx, "cloud_sync")
+    cloudSync = v === "" ? true : v === "true"
+  } catch {
+    cloudSync = true
+  }
   try {
     const v = await api.GetSetting(ctx, SETTING_KEY)
     encBlob = v ? Buffer.from(v, "base64") : null
   } catch {
     encBlob = null
   }
+}
+
+/**
+ * 插件设置 cloud_sync 变化：更新内存开关；开启同步时立即重写密文，
+ * 否则已存在的密文不会进 oplog（云同步只推后续变更）。
+ * @param {string} value - 新 setting 值（"true"/"false"）
+ * @returns {Promise<void>}
+ */
+export async function onCloudSyncChanged(value) {
+  cloudSync = value === "true"
+  // 关同步不重写：本地数据不动，只是后续变更不再记 oplog；已有 oplog 用户可在 Wox 云同步设置里处理
+  if (cloudSync && encBlob !== null) await persist()
 }
 
 /** 从未设置过主密码（setting 无密文） */
@@ -97,15 +117,19 @@ function parseEncBlob(raw) {
   return { salt, iv, tag, data: raw.subarray(off) }
 }
 
-/** 密文持久化到插件 setting（IsLocal：只存本地 wox.db，不进云同步——密钥数据不上云） */
+/** 密文持久化到插件 setting（cloudSync=false 时 IsLocal 只存本地 wox.db，不进云同步） */
 async function persist() {
   if (!storeApi) throw err("err_save_failed", "storage not initialized")
+  const bytes = encBlob ? encBlob.length : 0
   const r = await storeApi.SetSetting(storeCtx, {
     Key: SETTING_KEY,
     Value: encBlob ? encBlob.toString("base64") : "",
-    IsLocal: true,
+    IsLocal: !cloudSync,
   })
   if (!r || !r.Success) throw err("err_save_failed", (r && r.ErrMsg) || "unknown error")
+  try {
+    await storeApi.Log(storeCtx, "Info", `vault persisted: ${bytes}B, cloudSync=${cloudSync}`)
+  } catch {}
 }
 
 /**
