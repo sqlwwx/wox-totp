@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.5](https://github.com/sqlwwx/wox-totp/compare/v0.0.4...v0.0.5) (2026-10-08)
+
+
+### Bug Fixes
+
+* 密文改存插件 setting，升级不再清账号数据 ([c3ef05d](https://github.com/sqlwwx/wox-totp/commit/c3ef05d197cd176a236a66ba0adfa1438673f164))
+
 ### [0.0.4](https://github.com/sqlwwx/wox-totp/compare/v0.0.3...v0.0.4) (2026-09-30)
 
 ### [0.0.3](https://github.com/sqlwwx/wox-totp/compare/v0.0.2...v0.0.3) (2026-09-30)
