@@ -39,9 +39,9 @@ export async function syncQueryCommands(ctx) {
  * 重置时读不出数据（不知道密码），账户全部丢失且不可恢复，所以必须二次确认：
  * `totp reset` 显示警告行，回车跳 `totp reset confirm` 才真删。
  * @param {string[]} parts - 查询词分段，parts[1] 为 "confirm" 时执行真删
- * @returns {{Results: Array<Object>}}
+ * @returns {Promise<{Results: Array<Object>}>}
  */
-export function qReset(parts) {
+export async function qReset(parts) {
   if (parts[1] !== "confirm") {
     return single(t("reset_warning"), t("reset_hint"), [
       act(t("reset_confirm_yes"), ICON_DEL, async (actCtx) => {
@@ -52,7 +52,7 @@ export function qReset(parts) {
       }, { id: "totp:reset:cancel", preventHide: true }),
     ])
   }
-  resetStorage()
+  await resetStorage()
   lock()
   return single(t("reset_done"), t("reset_done_hint"), [])
 }
@@ -77,7 +77,7 @@ export async function qConfirm(key) {
     t("confirm_hint"),
     [
       act(t("confirm_yes"), ICON_DEL, async (actCtx) => {
-        updateAccounts((accs) => {
+        await updateAccounts((accs) => {
           const j = findByConfirmKey(accs, key)
           if (j >= 0) accs.splice(j, 1)
         })
@@ -111,7 +111,7 @@ export async function qAdd(parts) {
   } catch (e) {
     return single(t("err_invalid_secret", tErr(e)), t("err_secret_hint"), [])
   }
-  updateAccounts((accounts) => {
+  await updateAccounts((accounts) => {
     const i = accounts.findIndex((a) => a.name === entry.name && (a.issuer || "") === entry.issuer)
     if (i >= 0) accounts[i] = entry
     else accounts.push(entry)
@@ -183,7 +183,7 @@ export async function dispatchQuery(ctx, query) {
   maybeExpire() // 3 天未验证自动清内存密钥
   await syncQueryCommands(ctx) // 状态变化时同步查询建议命令
   if (cmd === "unlock") return lockedResult() // 回车弹表单，密码掩码输入
-  if (cmd === "reset") return qReset(parts) // 忘记密码时的硬重置入口（锁定期也可用）
+  if (cmd === "reset") return await qReset(parts) // 忘记密码时的硬重置入口（锁定期也可用）
   if (cmd === "lock") {
     lock()
     return single(t("locked_title"), t("view_codes"), [])

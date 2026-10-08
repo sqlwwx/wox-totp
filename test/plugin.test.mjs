@@ -21,6 +21,11 @@ function makeApi(state) {
     visible: true,
     GetTranslation: async (_ctx, key) => (key === "language_probe" ? "zh" : key),
     GetCacheFolder: async () => state.cacheDir,
+    GetSetting: async (_ctx, key) => state.settings.get(key) || "",
+    SetSetting: async (_ctx, option) => {
+      state.settings.set(option.Key, option.Value)
+      return { Success: true }
+    },
     Log: async (_ctx, level, msg) => api.logs.push(`${level}: ${msg}`),
     Notify: async (_ctx, msg) => api.notifies.push(msg),
     Copy: async (_ctx, p) => api.copies.push(p.text),
@@ -55,6 +60,7 @@ const queryCmd = async (command, search) => {
 beforeEach(async () => {
   state = {
     cacheDir: fs.mkdtempSync(path.join(os.tmpdir(), "totp-it-")),
+    settings: new Map(),
     unloadCbs: [],
     enterCbs: [],
     leaveCbs: [],
@@ -63,10 +69,9 @@ beforeEach(async () => {
   ctx = {}
   // PluginDirectory 指向仓库根：initI18n 从那里读 plugin.json 的 I18n 字典
   await plugin.init(ctx, { API: api, PluginDirectory: path.resolve(import.meta.dir, "..") })
-  // store 是模块级单例（与 index.mjs 共享同一 import），每测试解锁到该 cacheDir
+  // store 是模块级单例（与 index.mjs 共享同一 import），init 已跑过 initStore，这里解锁
   const store = await import("../src/store.mjs")
-  store.setCacheDir(state.cacheDir)
-  store.unlock("test-pass-123")
+  await store.unlock("test-pass-123")
 })
 
 afterEach(() => {
@@ -158,7 +163,7 @@ describe("delete confirm flow", () => {
 
     await delAction.Action(ctx, {})
     expect(api.changes[0]).toMatch(/^totp confirm /)
-    expect(fs.existsSync(path.join(state.cacheDir, "totp-accounts.enc"))).toBe(true)
+    expect(state.settings.get("vault")).toBeTruthy()
     // 账户还在
     const still = await query("")
     expect(still.Results.some((r) => r.Id?.startsWith("totp:"))).toBe(true)
@@ -230,7 +235,7 @@ describe("alias", () => {
     const cleared = await query("")
     const clearedRow = cleared.Results.find((r) => r.Id?.startsWith("totp:"))
     expect(clearedRow.Title).toMatch(/GitHub · me@x\.com\s+\d{6}/)
-    const raw = JSON.parse(decryptForTest(path.join(state.cacheDir, "totp-accounts.enc")))
+    const raw = JSON.parse(decryptForTest())
     expect(raw.accounts[0].alias).toBeUndefined()
   })
 })
@@ -258,32 +263,32 @@ describe("copy actions", () => {
 })
 
 // ---------- 存储 ----------
-// 测试辅助：用 store 的当前内存密钥解密密文文件（store 未导出解密，这里手动拼）
+// 测试辅助：让 store 自己读回（解密失败会抛错），再序列化返回
 import * as storeMod from "../src/store.mjs"
-function decryptForTest(encPath) {
-  // 依赖 store 已解锁：通过 updateAccounts 写一次探针拿不到内容，直接用 crypto + 内存密钥不可行，
-  // 改为读写等价验证：让 store 自己读回（解密失败会抛错），再序列化返回
+function decryptForTest() {
   const accounts = storeMod.readAccounts()
   return JSON.stringify({ accounts })
 }
 describe("storage via query", () => {
-  test("损坏的存储文件：query 不崩溃，显示错误", async () => {
+  test("损坏的密文：unlock 时报错，不崩溃", async () => {
     await query(`add ${URI()}`)
-    const store = path.join(state.cacheDir, "totp-accounts.enc")
-    fs.writeFileSync(store, "{broken json!!")
-    const res = await query("")
-    expect(res.Results).toHaveLength(1)
-    expect(res.Results[0].Title).toMatch(/出错|Error|损坏/)
-    // 坏文件已备份，原路径不再有损坏文件
-    expect(fs.existsSync(store)).toBe(false)
+    // 模拟 wox.db 密文记录损坏
+    state.settings.set("vault", Buffer.from("{broken json!!").toString("base64"))
+    await storeMod.initStore(api, ctx)
+    storeMod.lock()
+    // 锁定态正常显示（密文损坏在解锁时才暴露）
+    const locked = await query("")
+    expect(locked.Results.length).toBeGreaterThanOrEqual(1)
+    // 解锁失败：Notify 报「加密存储损坏」
+    const unlockRow = locked.Results[0].Actions.find((a) => a.Id === "totp:unlock")
+    await unlockRow.OnSubmit(ctx, { Values: { password: "test-pass-123" } })
+    expect(api.notifies.at(-1)).toMatch(/损坏|corrupt/)
+    expect(storeMod.isLocked()).toBe(true)
   })
 
-  test("删除到空后文件合法（rename 原子写）", async () => {
+  test("添加账号后密文持久化到 setting（能读回）", async () => {
     await query(`add ${URI()}`)
-    const store = path.join(state.cacheDir, "totp-accounts.enc")
-    // 文件存在、0600、且 store 能正常读回（解密成功 = 合法密文）
-    expect(fs.existsSync(store)).toBe(true)
-    expect(fs.statSync(store).mode & 0o777).toBe(0o600)
+    expect(state.settings.get("vault")).toBeTruthy()
     expect(storeMod.readAccounts()).toHaveLength(1)
   })
 })
@@ -398,12 +403,12 @@ describe("password auth via query", () => {
     // 第一步确认只是跳到 reset confirm，还没删
     await goAction.Action(ctx, {})
     expect(api.changes[0]).toBe("totp reset confirm")
-    expect(fs.existsSync(path.join(state.cacheDir, "totp-accounts.enc"))).toBe(true)
+    expect(state.settings.get("vault")).toBeTruthy()
 
-    // confirm 提交后：文件删除、回到未设置状态
+    // confirm 提交后：setting 清空、回到未设置状态
     const confirmRes = await query("reset confirm")
     expect(confirmRes.Results[0].Title).toMatch(/已重置|Reset done/)
-    expect(fs.existsSync(path.join(state.cacheDir, "totp-accounts.enc"))).toBe(false)
+    expect(state.settings.get("vault")).toBe("")
     expect(storeMod.needsSetup()).toBe(true)
   })
 })

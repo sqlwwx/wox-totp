@@ -1,7 +1,7 @@
 // TOTP 核心 + store 单测：RFC 6238 官方向量 + otpauth URI 解析
-import { describe, test, expect } from "bun:test"
+import { describe, test, expect, beforeAll } from "bun:test"
 import { base32Decode, totp, parseUri, remainingSeconds, matchAccount } from "../src/totp.mjs"
-import { readAccounts, updateAccounts, setCacheDir, unlock } from "../src/store.mjs"
+import { readAccounts, updateAccounts, initStore, unlock } from "../src/store.mjs"
 import fs from "fs"
 import os from "os"
 
@@ -90,22 +90,28 @@ describe("matchAccount（原文匹配）", () => {
 })
 
 describe("store", () => {
-  const tmp = fs.mkdtempSync(os.tmpdir() + "/totp-test-")
-  setCacheDir(tmp)
-  unlock("store-test-pass")
+  // mock setting 存储（store.test.mjs 已覆盖完整逻辑，这里只给 totp 测试提供存储后端）
+  const settings = new Map()
+  beforeAll(async () => {
+    await initStore({
+      GetSetting: async (_c, k) => settings.get(k) || "",
+      SetSetting: async (_c, o) => { settings.set(o.Key, o.Value); return { Success: true } },
+    }, {})
+    await unlock("store-test-pass")
+  })
 
   test("空文件读出空数组", () => {
     expect(readAccounts()).toEqual([])
   })
 
-  test("updateAccounts 写入后可读回", () => {
-    updateAccounts((accounts) => accounts.push({ name: "a", issuer: "B", secret: "JBSWY3DPEHPK3PXP" }))
+  test("updateAccounts 写入后可读回", async () => {
+    await updateAccounts((accounts) => accounts.push({ name: "a", issuer: "B", secret: "JBSWY3DPEHPK3PXP" }))
     expect(readAccounts().length).toBe(1)
     expect(readAccounts()[0].name).toBe("a")
   })
 
-  test("重复 add 同 issuer+name 覆盖", () => {
-    updateAccounts((accounts) => {
+  test("重复 add 同 issuer+name 覆盖", async () => {
+    await updateAccounts((accounts) => {
       const i = accounts.findIndex((a) => a.name === "a" && (a.issuer || "") === "B")
       if (i >= 0) accounts[i] = { name: "a", issuer: "B", secret: "NEW" }
       else accounts.push({ name: "a", issuer: "B", secret: "NEW" })
@@ -113,6 +119,4 @@ describe("store", () => {
     expect(readAccounts().length).toBe(1)
     expect(readAccounts()[0].secret).toBe("NEW")
   })
-
-  fs.rmSync(tmp, { recursive: true, force: true })
 })

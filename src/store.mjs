@@ -1,51 +1,58 @@
 /**
- * 账户加密存储：~/.wox/cache/plugins/<id>/totp-accounts.enc
- * - AES-256-GCM 认证加密，密钥由主密码经 scrypt 派生（salt 存文件头，不存密码）
+ * 账户加密存储：Wox 插件 Setting（wox.db，IsLocal 不进云同步）。
+ * 为什么不用 GetCacheFolder：插件升级 = 先卸载旧版，Wox core 会 RemoveAll 整个
+ * 缓存目录（wox.core/plugin/store.go uninstallLocked → RemovePluginCacheDirectory），
+ * 账号数据跟着陪葬；而升级路径 skipCleanSetting=true 保留插件 setting，
+ * 只有用户手动卸载才清（语义正确）。
+ * - AES-256-GCM 认证加密，密钥由主密码经 scrypt 派生（salt 存密文头，不存密码）
  * - 主密码/派生密钥只存内存（模块级变量）：进程重启丢失；3 天未验证自动清除
- * - 兼容迁移：首次解锁发现旧明文 totp-accounts.json 时转密文并删除明文
- * - 写入走「临时文件 + rename」原子落盘，权限 0600
+ * - 密文常驻内存（init 时经 initStore 从 setting 加载一次）：读路径纯内存同步，
+ *   写路径经 SetSetting RPC 异步持久化（失败抛错，绝不静默丢数据）
  * @module store
  */
-import fs from "fs"
 import crypto from "crypto"
 import { err } from "./i18n.mjs"
 
-const MAGIC = Buffer.from("WOTPE", "utf8") // 5 字节文件标识
+const MAGIC = Buffer.from("WOTPE", "utf8") // 5 字节密文标识
 const VERSION = 1
 const SALT_LEN = 16
 const IV_LEN = 12
 const KEY_LEN = 32
 const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }
 export const AUTH_TTL_MS = 3 * 24 * 60 * 60 * 1000
+const SETTING_KEY = "vault"
 
-let cacheDir = ""
+let storeApi = null
+let storeCtx = null
+let encBlob = null // Buffer 密文（MAGIC+ver+salt+iv+tag+data）；null = 从未设置过主密码
 let encKey = null // Buffer(32)，解锁后缓存，lock/过期/进程退出即消失
 let encSalt = null
 let lastAuthAt = 0
 
 /**
- * 设置缓存目录并清空内存会话（init 时调用；热重载重设目录相当于重新锁定）。
- * @param {string} dir - Wox 插件缓存目录绝对路径
- * @returns {void}
+ * 初始化：保存 api/ctx 并从插件 setting 加载密文（无记录 = needsSetup）。
+ * @param {Object} api - Wox API
+ * @param {Object} ctx - Wox 上下文
+ * @returns {Promise<void>}
  */
-export function setCacheDir(dir) {
-  cacheDir = dir
+export async function initStore(api, ctx) {
+  storeApi = api
+  storeCtx = ctx
+  encBlob = null
   encKey = null
   encSalt = null
   lastAuthAt = 0
+  try {
+    const v = await api.GetSetting(ctx, SETTING_KEY)
+    encBlob = v ? Buffer.from(v, "base64") : null
+  } catch {
+    encBlob = null
+  }
 }
 
-function encPath() {
-  if (!cacheDir) throw err("err_cache_dir")
-  return cacheDir + "/totp-accounts.enc"
-}
-function legacyPath() {
-  return cacheDir + "/totp-accounts.json"
-}
-
-/** 从未设置过主密码（无密文文件） */
+/** 从未设置过主密码（setting 无密文） */
 export function needsSetup() {
-  return !fs.existsSync(encPath())
+  return encBlob === null
 }
 /**
  * 是否处于已解锁会话（内存中有派生密钥）。
@@ -73,15 +80,15 @@ function encryptAccounts(key, salt, accounts) {
   return Buffer.concat([MAGIC, Buffer.from([VERSION]), salt, iv, cipher.getAuthTag(), data])
 }
 
-// 解析文件头，格式非法时备份坏文件并抛错（同旧明文存储的损坏处理）
-function parseEncFile(raw) {
+// 解析密文头，格式非法时抛错（setting 载体无文件可备份，只报损坏）
+function parseEncBlob(raw) {
   const headerLen = MAGIC.length + 1 + SALT_LEN + IV_LEN + 16
   if (raw.length <= headerLen || !raw.subarray(0, MAGIC.length).equals(MAGIC)) {
-    throwCorrupt(raw, "invalid file header")
+    throw err("err_corrupt", "invalid header")
   }
   const version = raw[MAGIC.length]
   if (version !== VERSION) {
-    throwCorrupt(raw, `unsupported version ${version}`)
+    throw err("err_corrupt", `unsupported version ${version}`)
   }
   let off = MAGIC.length + 1
   const salt = raw.subarray(off, off + SALT_LEN); off += SALT_LEN
@@ -90,60 +97,36 @@ function parseEncFile(raw) {
   return { salt, iv, tag, data: raw.subarray(off) }
 }
 
-function throwCorrupt(raw, reason) {
-  // 改名备份（原路径清空），绝不把损坏文件留在原路径——防后续写入拿空数据覆盖
-  const backup = `${encPath()}.corrupt-${Date.now()}`
-  try {
-    fs.renameSync(encPath(), backup)
-  } catch {}
-  // reason 是给日志看的英文诊断短语（invalid header / unsupported version N），
-  // 中文描述由 err_corrupt 模板整体承担
-  throw err("err_corrupt", backupFileName(backup), reason)
-}
-
-// 备份路径放进文案前先去掉目录前缀，避免超长/泄漏缓存目录结构
-function backupFileName(backup) {
-  return backup.split("/").pop()
-}
-
-function writeEncFile(buf) {
-  fs.mkdirSync(cacheDir, { recursive: true })
-  const tmp = encPath() + ".tmp"
-  fs.writeFileSync(tmp, buf, { mode: 0o600 })
-  fs.renameSync(tmp, encPath())
+/** 密文持久化到插件 setting（IsLocal：只存本地 wox.db，不进云同步——密钥数据不上云） */
+async function persist() {
+  if (!storeApi) throw err("err_save_failed", "storage not initialized")
+  const r = await storeApi.SetSetting(storeCtx, {
+    Key: SETTING_KEY,
+    Value: encBlob ? encBlob.toString("base64") : "",
+    IsLocal: true,
+  })
+  if (!r || !r.Success) throw err("err_save_failed", (r && r.ErrMsg) || "unknown error")
 }
 
 /**
  * 解锁/初始化。首次调用即设置主密码；已有密文时验证密码（GCM tag 校验，错误即失败）。
- * 发现旧明文 totp-accounts.json 时迁移进密文并删除明文。
  * @param {string|number} password - 主密码（至少 6 位）
- * @returns {{migrated: boolean}} migrated = 本次是否从旧明文文件迁移
- * @throws {Error} 密码过短 / 主密码错误
+ * @returns {Promise<void>}
+ * @throws {Error} 密码过短 / 主密码错误 / 持久化失败
  */
-export function unlock(password) {
+export async function unlock(password) {
   const pwd = String(password || "")
   if (pwd.length < 6) throw err("err_pwd_short")
-  if (needsSetup()) {
+  if (encBlob === null) {
     const salt = crypto.randomBytes(SALT_LEN)
     encKey = deriveKey(pwd, salt)
     encSalt = salt
-    let accounts = []
-    let migrated = false
-    if (fs.existsSync(legacyPath())) {
-      try {
-        accounts = JSON.parse(fs.readFileSync(legacyPath(), "utf8")).accounts || []
-        migrated = true
-      } catch {
-        accounts = []
-      }
-    }
-    writeEncFile(encryptAccounts(encKey, salt, accounts))
-    if (migrated) fs.unlinkSync(legacyPath())
+    encBlob = encryptAccounts(encKey, salt, [])
+    await persist()
     lastAuthAt = Date.now()
-    return { migrated }
+    return
   }
-  const raw = fs.readFileSync(encPath())
-  const parsed = parseEncFile(raw)
+  const parsed = parseEncBlob(encBlob)
   const key = deriveKey(pwd, parsed.salt)
   try {
     const decipher = crypto.createDecipheriv("aes-256-gcm", key, parsed.iv)
@@ -156,7 +139,6 @@ export function unlock(password) {
   encKey = key
   encSalt = parsed.salt
   lastAuthAt = Date.now()
-  return { migrated: false }
 }
 
 /** 立即锁定：清空内存密钥/salt/上次认证时间。 */
@@ -172,17 +154,10 @@ export function maybeExpire() {
   return isLocked()
 }
 
-/** 解锁状态下读账户；锁定抛错（query 层会在更早处拦截） */
+/** 解锁状态下读账户（纯内存解密）；锁定抛错（query 层会在更早处拦截） */
 export function readAccounts() {
   if (!encKey) throw err("err_locked")
-  let raw
-  try {
-    raw = fs.readFileSync(encPath())
-  } catch (e) {
-    if (e.code === "ENOENT") return []
-    throw e
-  }
-  const parsed = parseEncFile(raw)
+  const parsed = parseEncBlob(encBlob)
   try {
     const decipher = crypto.createDecipheriv("aes-256-gcm", encKey, parsed.iv)
     decipher.setAuthTag(parsed.tag)
@@ -194,26 +169,28 @@ export function readAccounts() {
 }
 
 /**
- * 解锁状态下读-改-写账户（整体重加密落盘）。
+ * 解锁状态下读-改-写账户（整体重加密，异步持久化到 setting）。
  * @param {(accounts: Array<Object>) => any} mutator - 原地修改账户数组的回调
- * @returns {any} mutator 的返回值
- * @throws {Error} 锁定态抛「已锁定，无法写入」
+ * @returns {Promise<any>} mutator 的返回值
+ * @throws {Error} 锁定态抛「已锁定，无法写入」；持久化失败抛错
+ *   （失败时内存密文已更新、落库失败：进程退出最多丢本次变更，不破坏已有数据）
  */
-export function updateAccounts(mutator) {
+export async function updateAccounts(mutator) {
   if (!encKey) throw err("err_locked_write")
   const accounts = readAccounts()
   const ret = mutator(accounts)
-  writeEncFile(encryptAccounts(encKey, encSalt, accounts))
+  encBlob = encryptAccounts(encKey, encSalt, accounts)
+  await persist()
   return ret
 }
 
 /**
  * 修改主密码：新 salt 重新派生并整体重加密（数据保留）。
  * @param {string|number} newPwd - 新主密码（至少 6 位）
- * @returns {void}
- * @throws {Error} 密码过短 / 锁定态
+ * @returns {Promise<void>}
+ * @throws {Error} 密码过短 / 锁定态 / 持久化失败
  */
-export function changePassword(newPwd) {
+export async function changePassword(newPwd) {
   const pwd = String(newPwd || "")
   if (pwd.length < 6) throw err("err_pwd_short")
   if (!encKey) throw err("err_locked")
@@ -221,16 +198,16 @@ export function changePassword(newPwd) {
   const salt = crypto.randomBytes(SALT_LEN)
   encKey = deriveKey(pwd, salt)
   encSalt = salt
-  writeEncFile(encryptAccounts(encKey, salt, accounts))
+  encBlob = encryptAccounts(encKey, salt, accounts)
+  await persist()
   lastAuthAt = Date.now()
 }
 
-/** 硬重置：删除加密文件回到未设置状态（忘记密码的兜底，数据不可恢复） */
-export function resetStorage() {
-  try {
-    fs.unlinkSync(encPath())
-  } catch {}
+/** 硬重置：清空 setting 回到未设置状态（忘记密码的兜底，数据不可恢复） */
+export async function resetStorage() {
+  encBlob = null
   lock()
+  await persist() // Value 为空串 = 清除密文记录
 }
 
 /** 仅供测试：伪造上次认证时间验证过期逻辑 */

@@ -76,8 +76,8 @@ function unlockAction() {
     OnSubmit: async (formCtx, actionContext) => {
       const pwd = (actionContext.Values.password || "").trim()
       try {
-        const { migrated } = unlock(pwd)
-        await getApi().Notify(formCtx, migrated ? t("unlock_migrated") : needsSetupSafe() ? t("password_set") : t("unlocked"))
+        await unlock(pwd)
+        await getApi().Notify(formCtx, needsSetupSafe() ? t("password_set") : t("unlocked"))
         await getApi().RefreshQuery(formCtx, { PreserveSelectedIndex: true })
       } catch (e) {
         await getApi().Notify(formCtx, `TOTP: ${tErr(e)}`)
@@ -114,7 +114,7 @@ export function passwordAction() {
     OnSubmit: async (formCtx, actionContext) => {
       const pwd = (actionContext.Values.new_password || "").trim()
       try {
-        changePassword(pwd)
+        await changePassword(pwd)
         await getApi().Notify(formCtx, t("password_changed"))
         await getApi().RefreshQuery(formCtx, { PreserveSelectedIndex: true })
       } catch (e) {
@@ -166,7 +166,7 @@ export function buildActions(a, code) {
       ],
       OnSubmit: async (formCtx, actionContext) => {
         const alias = (actionContext.Values.alias || "").trim()
-        updateAccounts((accs) => {
+        await updateAccounts((accs) => {
           const j = accs.findIndex((x) => x.name === a.name && (x.issuer || "") === (a.issuer || ""))
           if (j >= 0) {
             if (alias) accs[j].alias = alias

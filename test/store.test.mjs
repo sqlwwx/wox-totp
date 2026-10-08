@@ -1,71 +1,64 @@
-// store 加密存储单测：AES-256-GCM + scrypt、主密码生命周期、明文迁移、损坏处理
+// store 加密存储单测：AES-256-GCM + scrypt、主密码生命周期、setting 载体读写
 import { describe, test, expect, beforeEach } from "bun:test"
 import {
-  setCacheDir, readAccounts, updateAccounts, unlock, lock,
+  initStore, readAccounts, updateAccounts, unlock, lock, resetStorage,
   needsSetup, isUnlocked, isLocked, maybeExpire, changePassword, AUTH_TTL_MS, _test,
 } from "../src/store.mjs"
-import fs from "fs"
-import os from "os"
-import path from "path"
 
-let tmp
+// mock Wox setting 存储：内存 KV，模拟 GetSetting/SetSetting RPC（含持久化语义：
+// 重载 initStore 后仍能读到上次写的值——升级后数据仍在的核心保障）
+let settings
+let api
 
-beforeEach(() => {
-  tmp = fs.mkdtempSync(os.tmpdir() + "/totp-store-")
-  setCacheDir(tmp)
+beforeEach(async () => {
+  settings = new Map()
+  api = {
+    GetSetting: async (_ctx, key) => settings.get(key) || "",
+    SetSetting: async (_ctx, option) => {
+      settings.set(option.Key, option.Value)
+      return { Success: true }
+    },
+  }
+  await initStore(api, {})
 })
-function encFile() { return path.join(tmp, "totp-accounts.enc") }
-function legacyFile() { return path.join(tmp, "totp-accounts.json") }
 
 describe("首次设置（needsSetup）", () => {
-  test("无密文文件 = 需要设置", () => {
+  test("setting 无密文 = 需要设置", () => {
     expect(needsSetup()).toBe(true)
     expect(isLocked()).toBe(false) // 未设置过不算锁定
   })
 
-  test("unlock 设置主密码并写入密文文件", () => {
-    unlock("secret123")
+  test("unlock 设置主密码并持久化密文到 setting", async () => {
+    await unlock("secret123")
     expect(isUnlocked()).toBe(true)
-    expect(fs.existsSync(encFile())).toBe(true)
-    const raw = fs.readFileSync(encFile())
+    const raw = Buffer.from(settings.get("vault"), "base64")
     expect(raw.subarray(0, 5).toString()).toBe("WOTPE")
     // 密文中不出现明文账户数据
     expect(raw.includes("GitHub")).toBe(false)
   })
 
-  test("密码过短拒绝", () => {
-    expect(() => unlock("12345")).toThrow("err_pwd_short")
-  })
-})
-
-describe("明文迁移", () => {
-  test("首次 unlock 迁移旧明文文件并删除", () => {
-    fs.writeFileSync(legacyFile(), JSON.stringify({ accounts: [{ name: "a", issuer: "B", secret: "XXX" }] }))
-    const r = unlock("secret123")
-    expect(r.migrated).toBe(true)
-    expect(fs.existsSync(legacyFile())).toBe(false)
-    expect(readAccounts()).toHaveLength(1)
-    expect(readAccounts()[0].secret).toBe("XXX")
+  test("密码过短拒绝", async () => {
+    await expect(unlock("12345")).rejects.toThrow("err_pwd_short")
   })
 })
 
 describe("锁定与解锁", () => {
-  beforeEach(() => unlock("secret123"))
+  beforeEach(async () => unlock("secret123"))
 
-  test("lock 后读取抛错，重新 unlock 恢复", () => {
+  test("lock 后读取抛错，重新 unlock 恢复", async () => {
     lock()
     expect(isLocked()).toBe(true)
     expect(() => readAccounts()).toThrow("err_locked")
-    unlock("secret123")
+    await unlock("secret123")
     expect(readAccounts()).toHaveLength(0)
   })
 
-  test("错误密码解锁失败且保持锁定", () => {
+  test("错误密码解锁失败且保持锁定", async () => {
     lock()
-    expect(() => unlock("wrong-password")).toThrow("err_wrong_password")
+    await expect(unlock("wrong-password")).rejects.toThrow("err_wrong_password")
     expect(isLocked()).toBe(true)
     // 正确密码可再解锁
-    unlock("secret123")
+    await unlock("secret123")
     expect(isUnlocked()).toBe(true)
   })
 
@@ -77,50 +70,74 @@ describe("锁定与解锁", () => {
     expect(() => readAccounts()).toThrow()
   })
 
-  test("写入需要解锁态，写后可读回", () => {
-    updateAccounts((a) => a.push({ name: "x", issuer: "", secret: "S" }))
+  test("写入需要解锁态，写后可读回", async () => {
+    await updateAccounts((a) => a.push({ name: "x", issuer: "", secret: "S" }))
     lock()
-    unlock("secret123")
+    await unlock("secret123")
     expect(readAccounts()[0].name).toBe("x")
   })
 })
 
-describe("changePassword", () => {
-  beforeEach(() => unlock("secret123"))
+describe("setting 载体持久化", () => {
+  beforeEach(async () => unlock("secret123"))
 
-  test("改密后新密码可解锁、旧密码失效", () => {
-    updateAccounts((a) => a.push({ name: "y", issuer: "", secret: "S" }))
-    changePassword("newpass456")
+  test("重载（模拟插件升级/重启）后数据仍在、密码仍有效", async () => {
+    await updateAccounts((a) => a.push({ name: "keep", issuer: "", secret: "S" }))
+    // 模拟热重载：重新 initStore，setting 数据不丢
+    await initStore(api, {})
+    expect(needsSetup()).toBe(false)
+    await unlock("secret123")
+    expect(readAccounts()[0].name).toBe("keep")
+  })
+
+  test("SetSetting 失败：写入抛错，数据不静默丢失", async () => {
+    api.SetSetting = async () => ({ Success: false, ErrMsg: "db locked" })
+    await expect(updateAccounts((a) => a.push({ name: "f", issuer: "", secret: "S" }))).rejects.toThrow("err_save_failed")
+  })
+
+  test("改密后新密码可解锁、旧密码失效", async () => {
+    await updateAccounts((a) => a.push({ name: "y", issuer: "", secret: "S" }))
+    await changePassword("newpass456")
     lock()
-    expect(() => unlock("secret123")).toThrow("err_wrong_password")
-    unlock("newpass456")
+    await expect(unlock("secret123")).rejects.toThrow("err_wrong_password")
+    await unlock("newpass456")
     expect(readAccounts()[0].name).toBe("y")
   })
 
-  test("锁定态改密拒绝", () => {
+  test("锁定态改密拒绝", async () => {
     lock()
-    expect(() => changePassword("newpass456")).toThrow("err_locked")
+    await expect(changePassword("newpass456")).rejects.toThrow("err_locked")
+  })
+
+  test("reset：清空 setting 回到未设置状态", async () => {
+    await updateAccounts((a) => a.push({ name: "z", issuer: "", secret: "S" }))
+    await resetStorage()
+    expect(needsSetup()).toBe(true)
+    // 重载后仍是未设置（setting 里已无密文）
+    await initStore(api, {})
+    expect(needsSetup()).toBe(true)
   })
 })
 
 describe("密文损坏", () => {
-  test("密文被篡改：GCM tag 校验使 unlock 失败（整个文件认证加密）", () => {
-    unlock("secret123")
-    updateAccounts((a) => a.push({ name: "z", issuer: "", secret: "S" }))
+  test("密文被篡改：GCM tag 校验使 unlock 失败（认证加密整体校验）", async () => {
+    await unlock("secret123")
+    await updateAccounts((a) => a.push({ name: "z", issuer: "", secret: "S" }))
     lock()
-    // 篡改密文尾部
-    const raw = fs.readFileSync(encFile())
+    // 篡改 setting 里的密文（base64 解出后改尾字节再存回，模拟 wox.db 记录损坏）
+    const raw = Buffer.from(settings.get("vault"), "base64")
     raw[raw.length - 1] ^= 0xff
-    fs.writeFileSync(encFile(), raw, { mode: 0o600 })
-    expect(() => unlock("secret123")).toThrow("err_wrong_password")
+    settings.set("vault", raw.toString("base64"))
+    await initStore(api, {})
+    await expect(unlock("secret123")).rejects.toThrow("err_wrong_password")
     expect(isLocked()).toBe(true)
   })
 
-  test("文件头非法：unlock 报错并备份", () => {
-    unlock("secret123")
+  test("密文头非法：unlock 报 err_corrupt", async () => {
+    await unlock("secret123")
     lock()
-    fs.writeFileSync(encFile(), "garbage data", { mode: 0o600 })
-    expect(() => unlock("secret123")).toThrow("err_corrupt")
-    expect(fs.readdirSync(tmp).some((f) => f.includes(".corrupt-"))).toBe(true)
+    settings.set("vault", Buffer.from("garbage data").toString("base64"))
+    await initStore(api, {})
+    await expect(unlock("secret123")).rejects.toThrow("err_corrupt")
   })
 })

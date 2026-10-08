@@ -15,7 +15,7 @@
 
 import { setApi, captureCtx, getApi } from "./context.mjs"
 import { initI18n, t, tErr } from "./i18n.mjs"
-import { setCacheDir } from "./store.mjs"
+import { initStore } from "./store.mjs"
 import { dispatchQuery } from "./commands.mjs"
 import { startLiveTimer, stopLiveTimer, clearRenderCache } from "./live.mjs"
 import { single } from "./ui.mjs"
@@ -32,14 +32,8 @@ export const plugin = {
     setApi(api)
     captureCtx(ctx)
     await initI18n(api, ctx, params.PluginDirectory)
-    let dir = ""
-    try {
-      dir = await api.GetCacheFolder(ctx)
-      setCacheDir(dir)
-    } catch {
-      setCacheDir("")
-    }
-    api.Log(ctx, "Info", `totp plugin init, cacheDir=${dir}`)
+    // 加密存储改用插件 setting（升级/卸载缓存目录会被 Wox 清掉，setting 保留）
+    await initStore(api, ctx)
     // 热重载/卸载时停掉 liveTimer，避免旧模块的 timer 泄漏
     await api.OnUnload(ctx, async () => {
       stopLiveTimer()
